@@ -7,7 +7,7 @@ import networkx as nx
 import numpy as np
 import sys
 import time
-from battlesnake_utils.battlesnake_utils.battlesnake import Pos, Snake
+from battlesnake_utils import Pos, Snake
 from collections import Counter
 from networkx_tree import hierarchy_pos
 from typing import Optional
