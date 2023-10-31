@@ -731,7 +731,7 @@ class Battlesnake:
                 if escape_dir in ["left", "right"]:
                     esc_attempt = self.you.head.as_dict()[ax] + look
                     if bounds[0] <= esc_attempt < bounds[1]:
-                        # Look at the space in the column/row ahead of us 
+                        # Look at the space in the column/row ahead of us
                         strip = self.board[esc_attempt, self.you.head.as_dict()[ax_dir]:] if scan_dir == +1 \
                             else self.board[esc_attempt, :self.you.head.as_dict()[ax_dir]][::-1]
                         danger_strip = strip[:np.where(strip == "$")[0][0]] if "$" in strip else strip
@@ -1128,11 +1128,11 @@ class Battlesnake:
         """Let's run the minimax algorithm with alpha-beta pruning!"""
         # Compute the best score of each move using the minimax algorithm with alpha-beta pruning
         if self.turn < 3:  # Our first 3 moves are super self-explanatory tbh
-            search_depth = 4
+            search_depth = 2
         elif len(self.opponents) > 6:
-            search_depth = 6  # TODO should be risk-averse
+            search_depth = 4  # TODO should be risk-averse
         elif len(self.opponents) >= 4:
-            search_depth = 6
+            search_depth = 4
         else:
             search_depth = self.minimax_search_depth
 
