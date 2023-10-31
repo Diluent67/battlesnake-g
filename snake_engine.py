@@ -44,18 +44,17 @@ class Battlesnake:
         # Process our snake using Rick's Snake class
         self.you = Snake(game_state["you"])
         
-        # Process all snakes as a dictionary of Snake objects
+        # Process all snakes as a dictionary of Snake objects with their IDs as a lookup
         self.all_snakes: dict[str, Snake] = {}
         for snake_dict in game_state["board"]["snakes"]:
             snake_obj = Snake(snake_dict)
             setattr(snake_obj, "food_eaten", snake_dict["food_eaten"] if "food_eaten" in snake_dict.keys() else None)
             self.all_snakes[snake_dict["id"]] = snake_obj
-
-            # Weird cases when running locally where the "you" snake is not our actual snake
+            # Weird edge case when running locally where the "you" snake is not our actual snake
             if game_state["you"]["name"] != my_name and snake_dict["name"] == my_name:
                 self.you = Snake(snake_dict)
 
-        # Another weird edge case when running locally where our snake is not in the "snakes" field
+        # Weird edge case when running locally where our snake is not in the "snakes" field
         if self.you.id not in self.all_snakes.keys():
             self.all_snakes[self.you.id] = self.you
 
@@ -65,7 +64,7 @@ class Battlesnake:
 
         # Finish up our constructor
         self.update_board()
-        self.minimax_search_depth = 6  # Max depth for minimax algorithm
+        self.minimax_search_depth = 4  # Depth for minimax algorithm
         self.peripheral_size = 3  # Length of our snake's "peripheral vision"
         self.debugging = debugging
         logging.basicConfig(level=logging.INFO, format="%(message)s", stream=sys.stdout)
@@ -75,10 +74,8 @@ class Battlesnake:
     def update_board(self):
         """
         Fill in the board with the locations of all snakes. Our snake will be displayed like "oo£" where "o" represents
-        the body and "£" represents the head. Opponents will be displayed as "xx£" in the same manner.
-
-        Also update the graph representation of the board to remove nodes occupied by our snake's body (but not head),
-        opponent snakes, and hazards.
+        the body and "£" represents the head. Opponents will be displayed as "xx£" in the same manner. Also update the
+        graph representation of the board to remove nodes occupied by our snake's body, opponent snakes, and hazards.
         """
         global tot_time_graph
         global counter_graph
@@ -646,6 +643,16 @@ class Battlesnake:
                 if other_id != snake_id:
                     for num, other_square in enumerate(other_snake.body):
                         board[other_square.x, other_square.y] = "$" if num == 0 else "x"
+            # Try to avoid any squares that our enemy can go to
+            if risk_averse:
+                threats = [other.head for other in self.all_snakes.values() if other.length >= self.you.length and other.id != snake_id]
+                for threat in threats:
+                    x, y = threat.x, threat.y
+                    avoid_sq = [(x - 1, y), (x + 1, y), (x, y - 1), (x, y + 1)]
+                    for n in avoid_sq:
+                        if not (n[0] == head.x and n[1] == head.y) and \
+                                (0 <= n[0] < self.board_width and 0 <= n[1] < self.board_height):
+                            board[n[0]][n[1]] = "x"
 
         # Narrow down a portion of the board that represents the snake's peripheral vision
         if confined_area is not None:
@@ -810,12 +817,14 @@ class Battlesnake:
 
         # We want to minimise available space for our opponents via flood fill (but only when there are fewer snakes in
         # our vicinity)
-        if len(self.opponents) <= 3:
+        dist_from_enemies = sorted(
+            [self.dijkstra_shortest_path(self.you.head, opp.head) for opp in self.opponents.values()])
+        if len(self.opponents) <= 3 or sum([dist <= 3 for dist in dist_from_enemies]) <= 3:
                 # and sum([dist < (self.board_width // 2) for dist in self.dist_from_enemies()]) <= 3 \
                 # and len(self.opponents) == sum([self.you.length > s["length"] for s in self.opponents.values()]):
             self.peripheral_size = 4
             closest_enemy = sorted(self.opponents.keys(), key=lambda opp_id: self.dijkstra_shortest_path(self.you.head, self.opponents[opp_id].head))[0]
-            available_enemy_space = self.flood_fill(closest_enemy, confined_area="General")
+            available_enemy_space = self.flood_fill(closest_enemy, risk_averse=True, confined_area="auto")
             if available_enemy_space < 4:
                 kill_bonus = 1000
             else:
