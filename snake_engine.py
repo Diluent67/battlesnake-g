@@ -14,7 +14,6 @@ from typing import Optional
 
 my_name = "Nightwing"
 # Use these global variables to add data for visualising the minimax decision tree
-# tree_tracker = {4: [], 3: [], 2: [], 1: [], 0: []}
 tree_tracker = {6: [], 5: [], 4: [], 3: [], 2: [], 1: [], 0: []}
 tree_edges = []
 tree_nodes = []
@@ -44,25 +43,29 @@ class Battlesnake:
 
         # Process our snake using Rick's Snake class
         self.you = Snake(game_state["you"])
+        
         # Process all snakes as a dictionary of Snake objects
-        self.all_snakes_dict: dict[str, Snake] = {}
+        self.all_snakes: dict[str, Snake] = {}
         for snake_dict in game_state["board"]["snakes"]:
-            self.all_snakes_dict[snake_dict["id"]] = Snake(snake_dict)  # "food_eaten": snake["food_eaten"] if "food_eaten" in snake.keys() else None
+            snake_obj = Snake(snake_dict)
+            setattr(snake_obj, "food_eaten", snake_dict["food_eaten"] if "food_eaten" in snake_dict.keys() else None)
+            self.all_snakes[snake_dict["id"]] = snake_obj
+
             # Weird cases when running locally where the "you" snake is not our actual snake
             if game_state["you"]["name"] != my_name and snake_dict["name"] == my_name:
                 self.you = Snake(snake_dict)
 
         # Another weird edge case when running locally where our snake is not in the "snakes" field
-        if self.you.id not in self.all_snakes_dict.keys():
-            self.all_snakes_dict[self.you.id] = self.you
+        if self.you.id not in self.all_snakes.keys():
+            self.all_snakes[self.you.id] = self.you
 
         # Opponent snakes
-        self.opponents = self.all_snakes_dict.copy()
+        self.opponents = self.all_snakes.copy()
         self.opponents.pop(self.you.id)
 
         # Finish up our constructor
         self.update_board()
-        self.minimax_search_depth = 6  # Depth for minimax algorithm
+        self.minimax_search_depth = 6  # Max depth for minimax algorithm
         self.peripheral_size = 3  # Length of our snake's "peripheral vision"
         self.debugging = debugging
         logging.basicConfig(level=logging.INFO, format="%(message)s", stream=sys.stdout)
@@ -274,8 +277,8 @@ class Battlesnake:
                 flood-fill on the peripheral field)
         """
         # Our peripheral field of vision when scanning for moves
-        head = self.all_snakes_dict[snake_id].head.as_dict()
-        neck = self.all_snakes_dict[snake_id].body_dict[1]
+        head = self.all_snakes[snake_id].head.as_dict()
+        neck = self.all_snakes[snake_id].body_dict[1]
         dim = self.peripheral_size
 
         # Got to figure out the direction ourselves
@@ -337,9 +340,9 @@ class Battlesnake:
             return False, True
 
         # Prevent snake from colliding with other snakes
-        length = self.all_snakes_dict[snake_id].length
+        length = self.all_snakes[snake_id].length
         risky_flag = False
-        for opp_id, opp_snake in self.all_snakes_dict.items():
+        for opp_id, opp_snake in self.all_snakes.items():
 
             # Different rules apply during the middle of running minimax, depending on whose turn it is since our snake
             # makes moves separately from opponent snakes
@@ -415,7 +418,7 @@ class Battlesnake:
         # Loop through possible moves and remove from consideration if it's invalid
         possible_moves = ["up", "down", "left", "right"]
         risky_moves = []
-        head = self.all_snakes_dict[snake_id].head
+        head = self.all_snakes[snake_id].head
         for move in possible_moves.copy():
             is_safe, is_risky = self.is_move_safe(
                 head.moved_to(move),
@@ -428,7 +431,7 @@ class Battlesnake:
                 risky_moves.append(move)
 
         if sort_by_dist_to is not None:
-            head2 = self.all_snakes_dict[sort_by_dist_to].head
+            head2 = self.all_snakes[sort_by_dist_to].head
             possible_moves = sorted(possible_moves,
                                     key=lambda move2: self.closest_distance(head2, head.moved_to(move2)))
         if sort_by_peripheral:
@@ -464,7 +467,7 @@ class Battlesnake:
             return False, True
 
         snake_monitor = {}  # A dictionary for each snake showing whether they're alive
-        for snake_id, snake in self.all_snakes_dict.items():
+        for snake_id, snake in self.all_snakes.items():
             # Check if each snake's head is in a safe square, depending on if we're at a depth where only we made a move
             is_safe, _ = self.is_move_safe(snake.head, snake_id, turn="done" if depth % 2 == 0 else "ours")
             snake_monitor[snake_id] = is_safe
@@ -504,7 +507,7 @@ class Battlesnake:
 
         # Loop through all snakes and simulate a move if provided
         all_snakes = []
-        for snake_id, snake in self.all_snakes_dict.items():
+        for snake_id, snake in self.all_snakes.items():
             if snake_id in move_dict:
                 # Update the head, body, and health of the snake to reflect the simulated move
                 new_head: dict = snake.head.moved_to(move_dict[snake_id]).as_dict()
@@ -614,13 +617,13 @@ class Battlesnake:
 
         :return: The total area of the flood fill selection
         """
-        head = self.all_snakes_dict[snake_id].head
+        head = self.all_snakes[snake_id].head
 
         if snake_id == self.you.id:  # Assume we're doing flood fill for our snake
             board = copy.deepcopy(self.board)
             # See how flood fill changes when all snakes fast-forward X turns
             if fast_forward > 0:
-                for snake in self.all_snakes_dict.values():
+                for snake in self.all_snakes.values():
                     to_remove = max(-(len(snake.body) - 1), -fast_forward)
                     tail_removed = snake.body[to_remove:]
                     for remove in tail_removed:
@@ -637,9 +640,9 @@ class Battlesnake:
                             board[n[0]][n[1]] = "x"
         else:  # Otherwise, generate a new board and pretend the opponent snake is our snake
             board = np.full((self.board_width, self.board_height), " ")
-            for num, square in enumerate(self.all_snakes_dict[snake_id].body):
+            for num, square in enumerate(self.all_snakes[snake_id].body):
                 board[square.x, square.y] = "£" if num == 0 else "o"
-            for other_id, other_snake in self.all_snakes_dict.items():
+            for other_id, other_snake in self.all_snakes.items():
                 if other_id != snake_id:
                     for num, other_square in enumerate(other_snake.body):
                         board[other_square.x, other_square.y] = "$" if num == 0 else "x"
@@ -1134,7 +1137,7 @@ class Battlesnake:
         elif len(self.opponents) >= 4:
             search_depth = 4
         else:
-            search_depth = self.minimax_search_depth
+            search_depth = 4
 
         tree_tracker[search_depth].append(0)
         _, best_move, _ = self.minimax(depth=search_depth, alpha=-np.inf, beta=np.inf, maximising_snake=True)
