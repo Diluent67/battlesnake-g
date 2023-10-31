@@ -39,6 +39,7 @@ class Battlesnake:
         self.food = [Pos(xy) for xy in game_state["board"]["food"]]
         self.hazards = [Pos(xy) for xy in game_state["board"]["hazards"]]
         self.board = np.full((self.board_width, self.board_height), " ")
+        self.board_ff = None  # For speeding up flood fill (populated in update_board)
         self.graph = nx.grid_2d_graph(self.board_width, self.board_height)
 
         # Process our snake using Rick's Snake class
@@ -85,7 +86,8 @@ class Battlesnake:
                 self.board[pos.x, pos.y] = "$" if num == 0 else "x"
                 clock_in = time.time_ns()
                 # Remove nodes on the graph occupied by opponent snakes since they shouldn't be reached
-                self.graph.remove_nodes_from([pos.as_tuple()])
+                if pos != self.you.head:
+                    self.graph.remove_nodes_from([pos.as_tuple()])
                 counter_graph += 1
                 tot_time_graph += round((time.time_ns() - clock_in) / 1000000, 3)
         for num, pos in enumerate(self.you.body):
@@ -97,6 +99,13 @@ class Battlesnake:
                 self.graph.remove_nodes_from([pos.as_tuple()])
                 counter_graph += 1
                 tot_time_graph += round((time.time_ns() - clock_in) / 1000000, 3)
+
+        self.board_ff = self.board.copy()
+        # if (self.board == " ").sum() > (self.board_width * self.board_height * 2 / 3):
+        #     for j in range(self.board_height):
+        #         for i in range(self.board_width):
+        #             if len(self.graph.edges((i, j))) == 4:
+        #                 self.board_ff[i, j] = "£"
 
     def display_board(self, board: Optional[np.array] = None, return_string: Optional[bool] = False):
         """
@@ -617,7 +626,7 @@ class Battlesnake:
         head = self.all_snakes[snake_id].head
 
         if snake_id == self.you.id:  # Assume we're doing flood fill for our snake
-            board = copy.deepcopy(self.board)
+            board = copy.deepcopy(self.board_ff)
             # See how flood fill changes when all snakes fast-forward X turns
             if fast_forward > 0:
                 for snake in self.all_snakes.values():
@@ -665,7 +674,7 @@ class Battlesnake:
                 return
             if board[x][y] in ["x", "o"]:  # Off-limit squares
                 return
-            if board[x][y] == "£" and not initial_square:  # Already filled
+            if board[x][y] in "£" and not initial_square:  # Already filled
                 return
             board[x][y] = "£"
             neighbours = [(x - 1, y), (x + 1, y), (x, y - 1), (x, y + 1)]
@@ -683,11 +692,12 @@ class Battlesnake:
         else:
             return flood_fill
 
-    def dist_to_nearest_food(self) -> int:
+    def dist_to_nearest_food(self) -> tuple[int, Pos]:
         """
         Return the shortest distance to food for our snake, but only if we're closer to it than an opponent snake
         """
         best_dist = np.inf
+        best_food = None
         for food in self.food:
             dist = self.dijkstra_shortest_path(food, self.you.head)
             # If an enemy snake is longer than ours, and we're both 2 squares away from food, then they're technically
@@ -697,7 +707,8 @@ class Battlesnake:
                               for snake in self.opponents.values()])
             if dist < best_dist and dist_enemy >= dist:
                 best_dist = dist
-        return best_dist
+                best_food = food
+        return best_dist, best_food
 
     def edge_kill_detection(self):
         """
@@ -742,12 +753,23 @@ class Battlesnake:
                     esc_attempt = self.you.head.as_dict()[ax] + look
                     if bounds[0] <= esc_attempt < bounds[1]:
                         # Look at the space in the column/row ahead of us
-                        strip = self.board[esc_attempt, self.you.head.as_dict()[ax_dir]:] if scan_dir == +1 \
-                            else self.board[esc_attempt, :self.you.head.as_dict()[ax_dir]][::-1]
+                        strip = self.board[esc_attempt, getattr(self.you.head, ax_dir):] if scan_dir == +1 \
+                            else self.board[esc_attempt, :(getattr(self.you.head, ax_dir) + 1)][::-1]
                         danger_strip = strip[:np.where(strip == "$")[0][0]] if "$" in strip else strip
                         # Check if there's free space ahead of us, we're trapped if there's none
                         if np.count_nonzero(danger_strip == " ") == 0:
                             trapped_sides[num] = True
+
+                        # Check if there's a snake two columns/rows over that can kill us
+                        esc_attempt_x2 = self.you.head.as_dict()[ax] + (look * 2)
+                        future_threat_pos = Pos(esc_attempt_x2, getattr(self.you.head, ax_dir))
+                        future_threat_opp = [opp_id for opp_id, opp_snake in self.opponents.items()
+                                             if opp_snake.head == future_threat_pos]
+                        if len(future_threat_opp) > 0:
+                            threat_id = future_threat_opp[0]
+                            if (self.all_snakes[threat_id].length >= self.you.length and
+                                    direction in self.get_obvious_moves(threat_id)):
+                                trapped_sides[num] = True
                     else:
                         trapped_sides[num] = True
         # If both sides of the snake are blocked in, then we're trapped
@@ -780,15 +802,16 @@ class Battlesnake:
             space_penalty = 0
 
         # ARE WE TRAPPED???
-        edge_kill_check = True
         if available_space_ra <= 15:
             fast_forward_space, opp_heads = self.flood_fill(self.you.id, fast_forward=available_space, return_touching_opps=True)
             trap_space = available_space - fast_forward_space
+
             to_remove = max(-(self.you.length - 1), -available_space)
-            stalling_path = self.stall_path(self.you.head, self.you.body[to_remove])
-            if stalling_path < available_space:
-                space_penalty = -1e7
-                trapped = True
+            if len(self.you.body[:to_remove]) > len(self.you.body) // 2:
+                stalling_path = self.stall_path(self.you.head, self.you.body[to_remove])
+                if stalling_path < available_space:  # We need to find a path that gives as much time as "available_space"
+                    space_penalty = -1e7
+                    trapped = True
 
             if len(opp_heads) > 0:
                 dist_to_trapped_opp = self.dijkstra_shortest_path(self.you.head, opp_heads[0])
@@ -803,7 +826,7 @@ class Battlesnake:
                 # Shoot we're trapped
                 if trapped:
                     space_penalty = -1e7  # We'd prefer getting killed than getting trapped, so penalise this more
-                    print("WE'RE TRAPPED")
+                    logging.info("WE'RE TRAPPED")
 
         else:
             # ARE WE GOING TO GET EDGE-KILLED???
@@ -841,12 +864,14 @@ class Battlesnake:
             dist_to_enemy = 0
 
         # If we're getting too close to enemy snakes that are longer, RETREAT
-        threats = [self.dijkstra_shortest_path(self.you.head, opp.head) for opp in self.opponents.values() if opp.length >= self.you.length]
+        threats = [self.dijkstra_shortest_path(self.you.head, opp.head) for opp in self.opponents.values() if opp.length > self.you.length]
         num_threats = (np.count_nonzero(np.array(threats) <= 2) * 2
                        + np.count_nonzero(np.array(threats) == 3) * 1)
 
         # Determine the closest safe distance to food
-        dist_food = self.dist_to_nearest_food()
+        dist_food, best_food = self.dist_to_nearest_food()
+        if best_food is not None:
+            logging.info(f"Closest distance to food = {dist_food, best_food.as_dict()}")
         health_flag = True if self.you.health < 40 else False
         shortest_flag = True if sum([self.you.length <= snake.length for snake in self.opponents.values()]) >= min([2, len(self.opponents)]) else False
         longest_flag = True if sum([self.you.length > snake.length for snake in self.opponents.values()]) == len(self.opponents) else False
@@ -1151,10 +1176,10 @@ class Battlesnake:
         tree_tracker[search_depth].append(0)
         _, best_move, _ = self.minimax(depth=search_depth, alpha=-np.inf, beta=np.inf, maximising_snake=True)
 
-        print("GRAPH")
-        print(f"Total time graphs: {tot_time_graph}")
-        print(f"Count of runs: {counter_graph}")
-        print(f"Time copying graphs: {copy_graph}")
+        logging.info("GRAPH")
+        logging.info(f"Total time graphs: {tot_time_graph}")
+        logging.info(f"Count of runs: {counter_graph}")
+        logging.info(f"Time copying graphs: {copy_graph}")
 
         # Output a visualisation of the minimax decision tree for debugging
         if self.debugging:
