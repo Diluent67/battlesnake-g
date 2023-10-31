@@ -1128,11 +1128,11 @@ class Battlesnake:
         """Let's run the minimax algorithm with alpha-beta pruning!"""
         # Compute the best score of each move using the minimax algorithm with alpha-beta pruning
         if self.turn < 3:  # Our first 3 moves are super self-explanatory tbh
-            search_depth = 2
-        elif len(self.opponents) > 6:
-            search_depth = 4  # TODO should be risk-averse
-        elif len(self.opponents) >= 4:
             search_depth = 4
+        elif len(self.opponents) > 6:
+            search_depth = 6  # TODO should be risk-averse
+        elif len(self.opponents) >= 4:
+            search_depth = 6
         else:
             search_depth = self.minimax_search_depth
 
