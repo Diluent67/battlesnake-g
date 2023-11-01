@@ -667,12 +667,15 @@ class Battlesnake:
         if confined_area is not None:
             xs, ys, head = self.peripheral_vision(snake_id, confined_area)
             board = board[xs[0]:xs[1], ys[0]:ys[1]]
+            self.display_board(board)
 
         def fill(x, y, board, initial_square):
             if board[x][y] == "$":  # Opponent snake heads
                 opp_heads_in_contact.append(Pos(x, y))
+                boundary_pos.append(Pos(x, y))
                 return
             if board[x][y] in ["x", "o"]:  # Off-limit squares
+                boundary_pos.append(Pos(x, y))
                 return
             if board[x][y] in "£" and not initial_square:  # Already filled
                 return
@@ -683,12 +686,13 @@ class Battlesnake:
                     fill(n[0], n[1], board, initial_square=False)
 
         opp_heads_in_contact = []
+        boundary_pos = []
         fill(head.x, head.y, board, initial_square=True)
         filled = sum((row == "£").sum() for row in board)
         flood_fill = max(filled - 1, 0)  # Exclude the head from the count, but cannot ever be negative
 
         if return_touching_opps:
-            return flood_fill, opp_heads_in_contact
+            return flood_fill, opp_heads_in_contact, boundary_pos
         else:
             return flood_fill
 
@@ -793,7 +797,7 @@ class Battlesnake:
 
         # Determine available space via flood fill
         available_space = self.flood_fill(self.you.id, risk_averse=True)
-        available_space_ra = self.flood_fill(self.you.id, risk_averse=False)
+        available_space_ra, _, boundaries = self.flood_fill(self.you.id, risk_averse=False, return_touching_opps=True)
         if available_space_ra < 4:
             space_penalty = -500
         elif available_space < 4:
@@ -803,13 +807,30 @@ class Battlesnake:
 
         # ARE WE TRAPPED???
         if available_space_ra <= 15:
-            fast_forward_space, opp_heads = self.flood_fill(self.you.id, fast_forward=available_space, return_touching_opps=True)
+            fast_forward_space, opp_heads, _ = self.flood_fill(self.you.id, fast_forward=available_space, return_touching_opps=True)
             trap_space = available_space - fast_forward_space
 
+            opening_in_boundary = None
+            try:
+                openings = []
+                for i in range(1, available_space_ra):
+                    for snake in self.all_snakes.values():
+                        to_remove = max(-(len(snake.body) - 1), -i)
+                        new_tail = snake.body[to_remove]
+                        if new_tail in boundaries:
+                            openings.append(new_tail)
+                            raise
+            except:
+                opening_in_boundary = openings[0]
+                time_it = i
+
             to_remove = max(-(self.you.length - 1), -available_space)
-            if len(self.you.body[:to_remove]) > len(self.you.body) // 2:
-                stalling_path = self.stall_path(self.you.head, self.you.body[to_remove])
-                if stalling_path < available_space:  # We need to find a path that gives as much time as "available_space"
+            stall_till_here = self.you.body[to_remove] if opening_in_boundary is None else opening_in_boundary
+
+
+            if opening_in_boundary is not None and len(self.you.body[:to_remove]) > len(self.you.body) // 2:
+                stalling_path = self.stall_path(self.you.head, stall_till_here)
+                if stalling_path < time_it:  # We need to find a path that gives as much time as "available_space"
                     space_penalty = -1e7
                     trapped = True
 
@@ -840,28 +861,35 @@ class Battlesnake:
 
         # We want to minimise available space for our opponents via flood fill (but only when there are fewer snakes in
         # our vicinity)
-        dist_from_enemies = sorted(
-            [self.dijkstra_shortest_path(self.you.head, opp.head) for opp in self.opponents.values()])
-        if len(self.opponents) <= 3 or sum([dist <= 3 for dist in dist_from_enemies]) <= 3:
+        dist_from_enemies = sorted([self.closest_distance(self.you.head, opp.head) for opp in self.opponents.values()])
+        if len(self.opponents) <= 3 or sum([dist <= 3 for dist in dist_from_enemies]) >= 1:
                 # and sum([dist < (self.board_width // 2) for dist in self.dist_from_enemies()]) <= 3 \
                 # and len(self.opponents) == sum([self.you.length > s["length"] for s in self.opponents.values()]):
             self.peripheral_size = 4
-            closest_enemy = sorted(self.opponents.keys(), key=lambda opp_id: self.dijkstra_shortest_path(self.you.head, self.opponents[opp_id].head))[0]
+            closest_enemy = sorted(self.opponents.keys(), key=lambda opp_id: self.closest_distance(self.you.head, self.opponents[opp_id].head))[0]
             available_enemy_space = self.flood_fill(closest_enemy, risk_averse=True, confined_area="auto")
             if available_enemy_space < 4:
                 kill_bonus = 1000
+            elif available_enemy_space < self.opponents[closest_enemy].length / 3:
+                kill_bonus = 500
             else:
                 kill_bonus = 0
         else:
-            available_enemy_space = 0
+            available_enemy_space = -2
             kill_bonus = 0
 
-        # Get closer to enemy snakes if we're longer by 3
-        if 2 >= len(self.opponents) == sum([self.you.length > s.length + 3 for s in self.opponents.values()]):
+        # Get closer to enemy snakes if we're longer
+        if 2 >= len(self.opponents) == sum([self.you.length >= s.length + 1 for s in self.opponents.values()]):
             dist_from_enemies = sorted([self.dijkstra_shortest_path(self.you.head, opp.head) for opp in self.opponents.values()])
             dist_to_enemy = dist_from_enemies[0]
         else:
             dist_to_enemy = 0
+        if dist_to_enemy > 0 and len(self.opponents) == 1:
+            aggression_weight = 1000
+        elif dist_to_enemy > 0:
+            aggression_weight = 250
+        else:
+            aggression_weight = 0
 
         # If we're getting too close to enemy snakes that are longer, RETREAT
         threats = [self.dijkstra_shortest_path(self.you.head, opp.head) for opp in self.opponents.values() if opp.length > self.you.length]
@@ -884,12 +912,11 @@ class Battlesnake:
         space_weight = 1
         peripheral_weight = 2
         enemy_left_weight = 1000
-        enemy_restriction_weight = 75 if len(self.opponents) > 2 else 200
+        enemy_restriction_weight = 0 if available_enemy_space == -2 else 75 if len(self.opponents) > 2 else 200
         food_weight = 250 if health_flag else 175 if shortest_flag else 25 if longest_flag else 50
         depth_weight = 25
         length_weight = 300
         centre_control_weight = 10
-        aggression_weight = 250 if dist_to_enemy > 0 else 0
         threat_proximity_weight = -25
 
         logging.info(f"Available space: {available_space}")
@@ -1070,7 +1097,7 @@ class Battlesnake:
                     opps_moves[opp_id] = [opp_move[0]]
 
             sorted_by_dists = sorted(self.opponents.keys(),
-                                     key=lambda opp_id2: self.manhattan_distance(
+                                     key=lambda opp_id2: self.closest_distance(
                                          self.you.head, self.opponents[opp_id2].head))
             opps_moves = dict(sorted(opps_moves.items(), key=lambda pair: sorted_by_dists.index(pair[0])))
 
