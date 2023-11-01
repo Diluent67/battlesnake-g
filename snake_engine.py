@@ -333,7 +333,7 @@ class Battlesnake:
             minimax algorithm or outside of it. If "ours", this means we're at a depth where our snake has to make a
             move. If "opponents", then we're at a depth where we've made a move but the opponent snakes haven't. If
             "done", then both our snake and the opponent snakes have made moves (and one complete turn
-            has been completed).
+            has been completed). If "basic", then only check to see if the snake goes out-of-bounds.
 
         :return:
             True if the square is safe, False otherwise
@@ -344,6 +344,8 @@ class Battlesnake:
             return False, True
         if move.y < 0 or move.y >= self.board_height:
             return False, True
+        if turn == "basic":
+            return True, False
 
         # Prevent snake from colliding with other snakes
         length = self.all_snakes[snake_id].length
@@ -512,20 +514,23 @@ class Battlesnake:
         }
 
         # Loop through all snakes and simulate a move if provided
-        all_snakes = []
+        all_snakes: list[dict] = []
         for snake_id, snake in self.all_snakes.items():
             if snake_id in move_dict:
                 # Update the head, body, and health of the snake to reflect the simulated move
-                new_head: dict = snake.head.moved_to(move_dict[snake_id]).as_dict()
-                all_snakes.append({
-                    "id": snake_id,
-                    "name": snake.name,
-                    "head": new_head,
-                    "body": [new_head] + snake.body_dict[:-1],
-                    "length": snake.length,
-                    "health": snake.health - 1,
-                    "food_eaten": new_head if Pos(new_head) in self.food else None
-                })
+                new_head = snake.head.moved_to(move_dict[snake_id])
+                in_bounds, _ = self.is_move_safe(new_head, snake_id, turn="basic")
+                if in_bounds:
+                    new_head = new_head.as_dict()
+                    all_snakes.append({
+                        "id": snake_id,
+                        "name": snake.name,
+                        "head": new_head,
+                        "body": [new_head] + snake.body_dict[:-1],
+                        "length": snake.length,
+                        "health": snake.health - 1,
+                        "food_eaten": new_head if Pos(new_head) in self.food else None
+                    })
                 # Repeat for our snake's specific attributes
                 if snake_id == self.you.id:
                     you["head"] = new_head
@@ -1192,7 +1197,7 @@ class Battlesnake:
         """Let's run the minimax algorithm with alpha-beta pruning!"""
         # Compute the best score of each move using the minimax algorithm with alpha-beta pruning
         if self.turn < 3:  # Our first 3 moves are super self-explanatory tbh
-            search_depth = 2
+            search_depth = 4
         elif len(self.opponents) > 6:
             search_depth = 4  # TODO should be risk-averse
         elif len(self.opponents) >= 4:
