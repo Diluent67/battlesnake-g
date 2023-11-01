@@ -659,7 +659,7 @@ class Battlesnake:
                         board[other_square.x, other_square.y] = "$" if num == 0 else "x"
             # Try to avoid any squares that our enemy can go to
             if risk_averse:
-                threats = [other.head for other in self.all_snakes.values() if other.length >= self.you.length and other.id != snake_id]
+                threats = [other.head for other in self.all_snakes.values() if other.length >= self.all_snakes[snake_id].length and other.id != snake_id]
                 for threat in threats:
                     x, y = threat.x, threat.y
                     avoid_sq = [(x - 1, y), (x + 1, y), (x, y - 1), (x, y + 1)]
