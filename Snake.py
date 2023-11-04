@@ -52,10 +52,11 @@ class Snake:
 
     def peripheral_vision(
             self,
-            direction: str,
+            direction: Optional[str] = "auto",
             dist: Optional[int] = 3,
             width: Optional[int] = 11,
-            height: Optional[int] = 11
+            height: Optional[int] = 11,
+            return_pos_only: Optional[bool] = False
     ) -> tuple[tuple, tuple, Pos]:
         """
         Calculate our snake's peripheral vision aka the portion of the board that is closest to our snake in a certain
@@ -86,7 +87,7 @@ class Snake:
         """
         # Our peripheral field of vision when scanning for moves
         head = self.head.__copy__()
-        neck = self.body[1]
+        neck = Pos(self.body_dict[1])
 
         # Got to figure out the direction ourselves
         if direction == "auto":
@@ -115,5 +116,7 @@ class Snake:
             peripheral_box_y = max(head.y - dist, 0), min(head.y + dist + 1, height)
             head.x, head.y = head.x - peripheral_box_x[0], head.y - peripheral_box_y[0]
 
+        if return_pos_only:
+            return peripheral_box_x, peripheral_box_y
         return peripheral_box_x, peripheral_box_y, head
     

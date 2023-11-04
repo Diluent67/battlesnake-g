@@ -290,6 +290,7 @@ class Board:
             confined_area: Optional[str] = None,
             risk_averse: Optional[bool] = False,
             fast_forward: Optional[int] = 0,
+            cutoff: Optional[str] = None,
             return_boundaries: Optional[bool] = False,
             return_touching_opps: Optional[bool] = False
     ) -> int | tuple[int, list[Pos]]:
@@ -330,8 +331,16 @@ class Board:
             for threat in threats:
                 risky_squares = threat.adjacent_pos(self.width, self.height)
                 for risky_pos in risky_squares:
-                    if head == risky_pos:
+                    if head != risky_pos:
                         board[risky_pos.x][risky_pos.y] = "x"
+
+        if cutoff:
+            head_cutoff = self.all_snakes[cutoff].head.moved_to(self.all_snakes[cutoff].facing_direction(), 1)
+            moved_ahead = 1
+            while self.is_pos_safe(head_cutoff, cutoff, turn="basic")[0]:
+                board[head_cutoff.x][head_cutoff.y] = "x"
+                moved_ahead += 1
+                head_cutoff = head_cutoff.moved_to(self.all_snakes[cutoff].facing_direction(), 1)
 
         # Narrow down a portion of the board that represents the snake's peripheral vision
         if confined_area is not None:
@@ -340,7 +349,7 @@ class Board:
             board = board[xs[0]:xs[1], ys[0]:ys[1]]
 
         def fill(x, y, board, initial_square):
-            if board[x][y] == "$":  # Opponent snake heads
+            if board[x][y] == "H":  # Opponent snake heads
                 heads_in_contact.append(Pos(x, y))
                 boundary_pos.append(Pos(x, y))
                 return

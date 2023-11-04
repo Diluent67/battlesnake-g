@@ -42,20 +42,20 @@ class Pos:
         """Return the Manhattan distance to another position"""
         return sum(abs(value1 - value2) for value1, value2 in zip(self.as_tuple(), end.as_tuple()))
 
-    def moved_to(self, direction):
+    def moved_to(self, direction, distance=1):
         """Return this position moved by 1 in a given direction"""
         if direction == "left":
-            next_x = self.x - 1
+            next_x = self.x - distance
             next_y = self.y
         elif direction == "right":
-            next_x = self.x + 1
+            next_x = self.x + distance
             next_y = self.y
         elif direction == "up":
             next_x = self.x
-            next_y = self.y + 1
+            next_y = self.y + distance
         elif direction == "down":
             next_x = self.x
-            next_y = self.y - 1
+            next_y = self.y - distance
         else:
             raise Exception(f"Invalid direction: {direction}")
 
@@ -87,4 +87,9 @@ class Pos:
             dirs.append("down")
 
         return dirs
+
+    def within_bounds(self, bounds):
+        xs, ys = bounds
+        return xs[0] <= self.x <= xs[1] and ys[0] <= self.y <= ys[1]
+
     
