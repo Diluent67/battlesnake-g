@@ -3,115 +3,7 @@ from typing import Optional, Union
 import sys
 import copy
 import pandas as pd
-from time import sleep
 
-class Pos:
-    """
-    An x,y position, with many helper methods
-    """
-
-    all_directions = ['left', 'up', 'right', 'down']
-    ascii_for_direction = {'left': '←', 'up': '↑', 'right': '→', 'down': '↓'}
-
-    def __init__(self, x: Union[int, dict], y: int = None):
-        """ create from a dictionary with x and y keys, or as named parameters """
-        # allow unnamed or named x and y, or a dict
-        if isinstance(x, dict):
-            if 'x' not in x:
-                raise Exception("Pos constructor dict has no 'x' key")
-            elif 'y' not in x:
-                raise Exception("Pos constructor dict has no 'y' key")
-            self.x = x['x']
-            self.y = x['y']
-        else:
-            if y is None:
-                raise Exception("Pos constructor: no y value")
-            self.x = x
-            self.y = y
-
-    def __eq__(self, other):
-        """ two points are equal if they have the same x and y """
-        return self.x == other.x and self.y == other.y
-
-    def __str__(self):
-        return f"({self.x},{self.y})"
-
-    def __hash__(self):
-        return hash(self.__str__())
-
-    @classmethod
-    def turn_direction_left(cls, direction):
-        """ turn left (relative to given direction) """
-        i = cls.all_directions.index(direction)
-        i = i - 1
-        if i < 0:
-            i = 3
-        return cls.all_directions[i]
-
-    @classmethod
-    def turn_direction_right(cls, direction):
-        """ turn right (relative to given direction) """
-        i = cls.all_directions.index(direction)
-        i = i + 1
-        if i > 3:
-            i = 0
-        return cls.all_directions[i]
-
-    def as_dict(self):
-        return { 'x': self.x, 'y': self.y }
-
-    def as_tuple(self):
-        return self.x, self.y
-
-    def distance_to(self, x: Union[int, dict], y: int = None):
-        """ distance to another point """
-        # convert dict to x, y
-        if isinstance(x, dict):
-            y = x['y']
-            x = x['x']
-        elif isinstance(x, Pos):
-            y = x.y
-            x = x.x
-
-        dist = ((x - self.x)**2 + (y - self.y)**2)**0.5
-        return dist
-
-    def moved_to(self, direction):
-        """ return this position moved by 1 in given direction """
-        if direction == 'left':
-            next_x = self.x - 1
-            next_y = self.y
-        elif direction == 'right':
-            next_x = self.x + 1
-            next_y = self.y
-        elif direction == 'up':
-            next_x = self.x
-            next_y = self.y + 1
-        elif direction == 'down':
-            next_x = self.x
-            next_y = self.y - 1
-        else:
-            raise Exception(f"invalid direction: {direction}")
-
-        return Pos(x=next_x, y=next_y)
-
-    def direction_to(self, other):
-        """ return directions(s) to other Pos """
-        if self == other:
-            return []
-
-        dirs = []
-        if self.x < other.x:
-            dirs.append('right')
-        elif self.x > other.x:
-            dirs.append('left')
-
-        if self.y < other.y:
-            dirs.append('up')
-        elif self.y > other.y:
-            dirs.append('down')
-
-        return dirs
 
 
 class Snake:
@@ -134,7 +26,7 @@ class Snake:
             self.body = []
             for seg in snake_dict['body']:
                 self.body.append(Pos(seg))
-            self.body_dict = [ pos.as_dict() for pos in self.body ]
+            self.body_dict = [pos.as_dict() for pos in self.body]
             self.head = self.body[0]
             self.tail = self.body[-1]
 
@@ -154,11 +46,10 @@ class Snake:
         return d
 
     def facing_direction(self):
-        """ determine which direction this snake is facing """
-
-        # check if just starting a game
+        """ Determine which direction this snake is facing """
+        # Check if just starting a game
         if self.head == self.body[1]:
-            # technically None would be a more accurate choice, but I don't want to check for None
+            # Technically None would be a more accurate choice, but I don't want to check for None
             # everytime calling this method
             return 'up'
 
@@ -166,141 +57,131 @@ class Snake:
         return direction[0]
 
     def pos_ahead(self):
-        """ position in front of head """
+        """ Position in front of head """
         return self.head.moved_to(self.facing_direction())
 
-    def pos_to_right(self):
-        """ position to right of head """
-        return self.head.moved_to(self.head.turn_direction_right(self.facing_direction()))
+    # def pos_to_right(self):
+    #     """ Position to right of head """
+    #     return self.head.moved_to(self.head.turn_direction_right(self.facing_direction()))
+    #
+    # def pos_to_left(self):
+    #     """ Position to left of head """
+    #     return self.head.moved_to(self.head.turn_direction_left(self.facing_direction()))
+    #
+    # def pos_ahead_to_right(self):
+    #     """ Forward one, right one """
+    #     ahead = self.head.moved_to(self.facing_direction())
+    #     return ahead.moved_to(self.head.turn_direction_right(self.facing_direction()))
+    #
+    # def pos_ahead_to_left(self):
+    #     """ forward one, right one """
+    #     ahead = self.head.moved_to(self.facing_direction())
+    #     return ahead.moved_to(self.head.turn_direction_left(self.facing_direction()))
 
-    def pos_to_left(self):
-        """ position to left of head """
-        return self.head.moved_to(self.head.turn_direction_left(self.facing_direction()))
 
-    def pos_ahead_to_right(self):
-        """ forward one, right one """
-        ahead = self.head.moved_to(self.facing_direction())
-        return ahead.moved_to(self.head.turn_direction_right(self.facing_direction()))
-
-    def pos_ahead_to_left(self):
-        """ forward one, right one """
-        ahead = self.head.moved_to(self.facing_direction())
-        return ahead.moved_to(self.head.turn_direction_left(self.facing_direction()))
-
-
-class Board:
-    def __init__(self, board_dict: Optional[dict] = None):
-        if board_dict is None:
-            self.width = 0
-            self.height = 0
-            self.snakes = []
-            self.food = []
-            self.hazards = []
-            self.crumbs = []
-        else:
-            self.width = board_dict['width']
-            self.height = board_dict['height']
-            self.snakes = []
-            self.crumbs = []
-            self.food = [ Pos(xy) for xy in board_dict['food'] ]
-            self.hazards = [ Pos(xy) for xy in board_dict['hazards'] ]
-
-            if len(board_dict['snakes']) > 0:
-                for i in range(len(board_dict['snakes'])):
-                    self.snakes.append(Snake(board_dict['snakes'][i]))
-
-        # keep a dataframe representation of this board
-        self.update_df()
-
-    def update_df(self):
-        " transform board attributes into a dataframe representation "
-        df = pd.DataFrame(' ', columns=range(self.width), index=range(self.height))
-
-        if len(self.snakes) > 0:
-            # snake positions
-            for i in range(len(self.snakes)):
-                snake = self.snakes[i]
-                body = snake.body
-                head = snake.head
-                tail = snake.tail
-                for j in range(len(body)):
-                    x = body[j].x
-                    y = body[j].y
-                    df.at[y,x] = str(i)   # snake body
-                x = head.x
-                y = head.y
-                df.at[y,x] = Snake.head_char             # snake head
-                df.at[tail.y, tail.x] = Snake.tail_char  # snake tail
-
-        if len(self.food) > 0:
-            # food
-            for i in range(len(self.food)):
-                food_piece = self.food[i]
-                x = food_piece.x
-                y = food_piece.y
-                df.at[y,x] = 'f'          # food
-
-        if len(self.hazards) > 0:
-            # hazards
-            for i in range(len(self.hazards)):
-                hazard = self.hazards[i]
-                x = hazard.x
-                y = hazard.y
-                df.at[y,x] = '.'
-
-        if len(self.crumbs) > 0:
-            # crumbs
-            for i in range(len(self.crumbs)):
-                crumb = self.crumbs[i]
-                x = crumb.x
-                y = crumb.y
-                df.at[y,x] = ';'
-
-        self.df = df
-
-    def __str__(self):
-        " print out the board with increasing y going up "
-        df_reversed = self.df[::-1]
-        return( df_reversed.to_string())
-
-    def as_dict(self):
-        d = dict()
-        d['width'] = self.width
-        d['height'] = self.height
-        d['hazards'] = [ pos.as_dict() for pos in self.hazards ]
-        d['food'] = [ pos.as_dict() for pos in self.food ]
-        d['snakes'] = [ snake.as_dict() for snake in self.snakes ]
-
-        return(d)
-
-    def is_free(self, pos: Union[dict, Pos], tails_are_obstructions=False):
-        " is given position on the board free (ie not obstructed) ? "
-
-        # accept dict or Pos object
-        if isinstance(pos, dict):
-            x = pos['x']
-            y = pos['y']
-        elif isinstance(pos, Pos):
-            x = pos.x
-            y = pos.y
-        else:
-            raise Exception(f"is_free: can't handle type: {type(pos)}")
-
-        board_width = self.width
-        board_height = self.height
-
-        # not free if off the board
-        is_free = None
-        if x < 0 or x >= board_width or y < 0 or y >= board_height:
-            is_free =  False
-            this_spot = "<off board>"
-        else:
-            this_spot = self.df.at[y,x]
-            # note: food is not obstructing
-            is_free = this_spot == ' ' or this_spot == 'f' or (not tails_are_obstructions and this_spot == 'T')
-
-        #print(f"pos ({x},{y}) is_free={is_free} cause value is '{this_spot}'")
-        return is_free
+# class Board:
+#     def __init__(self, board_dict: Optional[dict] = None):
+#         if board_dict is None:
+#             self.width = 0
+#             self.height = 0
+#             self.snakes = []
+#             self.food = []
+#             self.hazards = []
+#         else:
+#             self.width = board_dict['width']
+#             self.height = board_dict['height']
+#             self.snakes = []
+#             self.food = [Pos(xy) for xy in board_dict['food']]
+#             self.hazards = [Pos(xy) for xy in board_dict['hazards']]
+#
+#             if len(board_dict['snakes']) > 0:
+#                 for i in range(len(board_dict['snakes'])):
+#                     self.snakes.append(Snake(board_dict['snakes'][i]))
+#
+#         # keep a dataframe representation of this board
+#         self.update_df()
+#
+#     def update_df(self):
+#         " transform board attributes into a dataframe representation "
+#         df = pd.DataFrame(' ', columns=range(self.width), index=range(self.height))
+#
+#         if len(self.snakes) > 0:
+#             # snake positions
+#             for i in range(len(self.snakes)):
+#                 snake = self.snakes[i]
+#                 body = snake.body
+#                 head = snake.head
+#                 tail = snake.tail
+#                 for j in range(len(body)):
+#                     x = body[j].x
+#                     y = body[j].y
+#                     df.at[y,x] = str(i)   # snake body
+#                 x = head.x
+#                 y = head.y
+#                 df.at[y,x] = Snake.head_char             # snake head
+#                 df.at[tail.y, tail.x] = Snake.tail_char  # snake tail
+#
+#         if len(self.food) > 0:
+#             # food
+#             for i in range(len(self.food)):
+#                 food_piece = self.food[i]
+#                 x = food_piece.x
+#                 y = food_piece.y
+#                 df.at[y,x] = 'f'          # food
+#
+#         if len(self.hazards) > 0:
+#             # hazards
+#             for i in range(len(self.hazards)):
+#                 hazard = self.hazards[i]
+#                 x = hazard.x
+#                 y = hazard.y
+#                 df.at[y,x] = '.'
+#
+#         self.df = df
+#
+#     def __str__(self):
+#         " print out the board with increasing y going up "
+#         df_reversed = self.df[::-1]
+#         return df_reversed.to_string()
+#
+#     def as_dict(self):
+#         d = dict()
+#         d['width'] = self.width
+#         d['height'] = self.height
+#         d['hazards'] = [ pos.as_dict() for pos in self.hazards ]
+#         d['food'] = [ pos.as_dict() for pos in self.food ]
+#         d['snakes'] = [ snake.as_dict() for snake in self.snakes ]
+#
+#         return d
+#
+#     def is_free(self, pos: Union[dict, Pos], tails_are_obstructions=False):
+#         " is given position on the board free (ie not obstructed) ? "
+#
+#         # accept dict or Pos object
+#         if isinstance(pos, dict):
+#             x = pos['x']
+#             y = pos['y']
+#         elif isinstance(pos, Pos):
+#             x = pos.x
+#             y = pos.y
+#         else:
+#             raise Exception(f"is_free: can't handle type: {type(pos)}")
+#
+#         board_width = self.width
+#         board_height = self.height
+#
+#         # not free if off the board
+#         is_free = None
+#         if x < 0 or x >= board_width or y < 0 or y >= board_height:
+#             is_free =  False
+#             this_spot = "<off board>"
+#         else:
+#             this_spot = self.df.at[y,x]
+#             # note: food is not obstructing
+#             is_free = this_spot == ' ' or this_spot == 'f' or (not tails_are_obstructions and this_spot == 'T')
+#
+#         #print(f"pos ({x},{y}) is_free={is_free} cause value is '{this_spot}'")
+#         return is_free
 
     def facing_t_choice(self, snake):
         " determine if given snake is facing an obstruction and have choice to turn left or right "

@@ -19,6 +19,9 @@ class Pos:
             self.x = x
             self.y = y
 
+    def __copy__(self):
+        return Pos(self.x, self.y)
+
     def __eq__(self, other):
         """Two points are equal if they have the same x and y"""
         return self.x == other.x and self.y == other.y

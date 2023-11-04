@@ -8,7 +8,7 @@ from Snake import Snake
 
 
 class Board:
-    def __init__(self, board_dict: dict, all_snakes: dict[str, Snake]):
+    def __init__(self, board_dict: dict, all_snakes: Optional[dict[str, Snake]] = None):
         """
         Represents our Battlesnake board in any given state. Provides visualisations useful for debugging and can
         perform flood fill.
@@ -20,6 +20,10 @@ class Board:
         self.height = board_dict["height"]
         self.food = [Pos(xy) for xy in board_dict["food"]]
         self.hazards = [Pos(xy) for xy in board_dict["hazards"]]
+        if all_snakes is None:
+            all_snakes: dict[str, Snake] = {}
+            for snake_dict in board_dict["snakes"]:
+                all_snakes[snake_dict["id"]] = Snake(snake_dict)
         self.all_snakes = all_snakes
         self.board = np.full((self.width, self.height), " ")
         self.graph = nx.grid_2d_graph(self.width, self.height)
@@ -86,6 +90,12 @@ class Board:
         d["food"] = [ pos.as_dict() for pos in self.food ]
         d["snakes"] = [ snake.as_dict() for snake in self.all_snakes.values() ]
         return d
+
+    def identify_snake(self, pos: Pos) -> Snake:
+        matched = [snake for snake in self.all_snakes.values() if pos in snake.body]
+        if len(matched) > 1:
+            raise Exception("Interesting edge case where two snakes are at the same position...")
+        return matched[0]
 
     def closest_dist(self, start: Pos, end: Pos) -> int:
         """
@@ -271,6 +281,9 @@ class Board:
 
         return True, risky_flag
 
+    def crop_board(self, xs, ys):
+        self.board = self.board[xs[0]:xs[1], ys[0]:ys[1]]
+
     def flood_fill(
             self,
             snake_id: str,
@@ -279,7 +292,7 @@ class Board:
             fast_forward: Optional[int] = 0,
             return_boundaries: Optional[bool] = False,
             return_touching_opps: Optional[bool] = False
-    ) -> int | tuple[int, list]:
+    ) -> int | tuple[int, list[Pos]]:
         """
         Recursive function to get the total available space for a given snake. Basically, count how many £ symbols
         we can fill while avoiding any obstacle symbols e.g. "1", "2", ".", etc.
@@ -323,7 +336,7 @@ class Board:
         # Narrow down a portion of the board that represents the snake's peripheral vision
         if confined_area is not None:
             pass
-            xs, ys, head = self.all_snakes[snake_id].peripheral_vision(confined_area, self.width, self.height)
+            xs, ys, head = self.all_snakes[snake_id].peripheral_vision(confined_area, width=self.width, height=self.height)
             board = board[xs[0]:xs[1], ys[0]:ys[1]]
 
         def fill(x, y, board, initial_square):

@@ -161,18 +161,12 @@ class Battlesnake:
 
         :return: A Battlesnake instance incorporating the simulated moves in a new game state
         """
-        you = {
-            "id": self.you.id,
-            "name": self.you.name,
-            "health": self.you.health,
-            "body": self.you.body_dict,
-            "head": self.you.head.as_dict(),
-            "length": self.you.length
-        }
+        you_dict = self.you.as_dict()
 
         # Loop through all snakes and simulate a move if provided
         all_snakes: list[dict] = []
         for snake_id, snake in self.all_snakes.items():
+            snake_dict = snake.as_dict()
             if snake_id in move_dict:
                 # Update the head, body, and health of the snake to reflect the simulated move
                 new_head = snake.head.moved_to(move_dict[snake_id])
@@ -180,31 +174,19 @@ class Battlesnake:
                 valid_move, _ = self.board.is_pos_safe(new_head, snake_id, turn="basic")
                 if valid_move:
                     new_head = new_head.as_dict()
-                    all_snakes.append({
-                        "id": snake_id,
-                        "name": snake.name,
-                        "health": snake.health - 1,
-                        "body": [new_head] + snake.body_dict[:-1],
-                        "head": new_head,
-                        "length": snake.length,
-                        "food_eaten": new_head if Pos(new_head) in self.board.food else None
-                    })
+                    snake_dict["health"] = snake.health - 1
+                    snake_dict["body"] = [new_head] + snake.body_dict[:-1]
+                    snake_dict["head"] = new_head
+                    snake_dict["food_eaten"] = new_head if Pos(new_head) in self.board.food else None
+                    all_snakes.append(snake_dict)
                 # Repeat for our snake's specific attributes
                 if snake_id == self.you.id:
-                    you["health"] = self.you.health - 1
-                    you["body"] = [new_head] + self.you.body_dict[:-1]
-                    you["head"] = new_head
+                    you_dict["health"] = self.you.health - 1
+                    you_dict["body"] = [new_head] + self.you.body_dict[:-1]
+                    you_dict["head"] = new_head
             else:
                 # Add the snake without any changes
-                all_snakes.append({
-                    "id": snake_id,
-                    "name": snake.name,
-                    "body": snake.body_dict,
-                    "head": snake.head.as_dict(),
-                    "length": snake.length,
-                    "health": snake.health,
-                    "food_eaten": getattr(snake, "food_eaten", None)
-                })
+                all_snakes.append(snake_dict)
 
         board = {
             "height": self.board.height,
@@ -226,9 +208,9 @@ class Battlesnake:
                                      if not (food["x"] == snake_dict["food_eaten"]["x"]
                                              and food["y"] == snake_dict["food_eaten"]["y"])]
                     if snake_dict["id"] == self.you.id:
-                        you["length"] += 1
-                        you["body"] += [you["body"][-1]]
-                        you["health"] = 100
+                        you_dict["length"] += 1
+                        you_dict["body"] += [you_dict["body"][-1]]
+                        you_dict["health"] = 100
                     # Reset the food tracker
                     all_snakes[snake_num]["food_eaten"] = None
 
@@ -258,7 +240,7 @@ class Battlesnake:
             for i in sorted(rm_snake_indices, reverse=True):
                 del all_snakes[i]
 
-        new_game = Battlesnake({"turn": self.turn, "board": board, "you": you}, debugging=self.debugging)
+        new_game = Battlesnake({"turn": self.turn, "board": board, "you": you_dict}, debugging=self.debugging)
         return new_game
 
     def edge_kill_detection(self) -> bool:
@@ -325,15 +307,36 @@ class Battlesnake:
         # If both sides of the snake are blocked in, then we're trapped
         return True if sum(trapped_sides) == 2 else False
 
-    def space_penalty(self, available_space):
-        fast_forward_space, opp_heads = self.board.flood_fill(self.you.id, fast_forward=available_space,
-                                                              return_touching_opps=True)
-        trap_space = available_space - fast_forward_space
+    def trap_detection(self, available_space):
+        """
+        Determines if our snake is trapped based on the space it has left and possible escape routes
 
+        :param available_space: Our snake's flood fill (risk_averse=False)
+
+        :return: True if our snake's trapped, False otherwise
+        """
+        trapped = False
+
+        # If we have 5 remaining squares to go to, determine if our space changed if all snakes' tails were removed by 5
+        ff_space, opps = self.board.flood_fill(self.you.id, fast_forward=available_space, return_touching_opps=True)
+        space_left = available_space - ff_space
+        if space_left == 0:
+            # Situations where we're trapped along with another snake
+            if len(opps) > 0:
+                dist_to_trapped_opp = self.board.dijkstra_shortest_dist(self.you.head, opps[0])
+                trapped_opp = self.board.identify_snake(opps[0])
+                # We'll win the incoming collision if we're longer and colliding on the same square
+                trapped = not (dist_to_trapped_opp % 2 == 1 and self.you.length > trapped_opp.length)
+            else:
+                trapped = True
+                space_penalty = -1e7  # We'd prefer getting killed than getting trapped, so penalise this more
+            return trapped
+
+        # If space frees up after X moves, identify where the opening is
         opening_in_boundary = None
         try:
             openings = []
-            for i in range(1, available_space_ra):
+            for i in range(1, available_space):
                 for snake in self.all_snakes.values():
                     to_remove = max(-(len(snake.body) - 1), -i)
                     new_tail = snake.body[to_remove]
@@ -353,21 +356,9 @@ class Battlesnake:
                 space_penalty = -1e7
                 trapped = True
 
-        if len(opp_heads) > 0:
-            dist_to_trapped_opp = self.board.dijkstra_shortest_dist(self.you.head, opp_heads[0])
-            trapped_opp_length = \
-            [opp_snake.length for opp_snake in self.opponents.values() if opp_snake.head == opp_heads[0]][0]
 
-        if trap_space == 0:
-            trapped = True
-            if len(opp_heads) > 0:
-                if dist_to_trapped_opp % 2 == 1 and self.you.length > trapped_opp_length:
-                    trapped = False
 
-            # Shoot we're trapped
-            if trapped:
-                space_penalty = -1e7  # We'd prefer getting killed than getting trapped, so penalise this more
-                logging.info("WE'RE TRAPPED")
+
         return
 
     def heuristic(self, depth_number: int) -> tuple[float, dict]:
