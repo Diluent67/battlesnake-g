@@ -495,8 +495,8 @@ class Battlesnake:
             else:
                 kill_bonus = 0
             if kill_bonus > 0:
-                # Reward getting closer
-                kill_bonus += 1000 / self.board.closest_dist(self.you.head, self.all_snakes[closest_enemy].head)
+                # Reward getting closer, but only if it doesn't trap us
+                kill_bonus += (1000 / self.board.closest_dist(self.you.head, self.all_snakes[closest_enemy].head) if not self.trapped else 0)
         else:
             available_enemy_space = -2
             kill_bonus = 0
@@ -600,7 +600,7 @@ class Battlesnake:
         space_weight = 1
         peripheral_weight = 2
         enemy_restriction_weight = 0 if available_enemy_space == -2 else 75 if len(self.opponents) > 2 else 200
-        food_weight = 250 if health_flag else 200 if shortest_flag else 25 if longest_flag else 50
+        food_weight = 250 if health_flag else 200 if shortest_flag else 25 if longest_flag else 300/dist_food if dist_food <= 3 else 50
 
         if kill_bonus > 0:
             food_weight = 10
