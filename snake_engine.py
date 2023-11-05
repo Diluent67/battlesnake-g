@@ -172,7 +172,8 @@ class Battlesnake:
                 # Update the head, body, and health of the snake to reflect the simulated move
                 new_head = snake.head.moved_to(move_dict[snake_id])
                 # Skip the snake if it died
-                valid_move, _ = self.board.is_pos_safe(new_head, snake_id, turn="ours" if not evaluate_deaths else "opponents")
+                valid_move, _ = self.board.is_pos_safe(new_head, snake_id,
+                                                       turn="ours" if not evaluate_deaths else "opponents")
                 if valid_move:
                     new_head = new_head.as_dict()
                     snake_dict["health"] = snake.health - 1
@@ -342,21 +343,22 @@ class Battlesnake:
         trapped = False
         # If we have 5 remaining squares to go to, determine if our space changed if all snakes' tails were removed by 5
         space_left, opps = self.board.flood_fill(self.you.id, return_touching_opps=True)
-        # space_left = available_space - ff_space
+        collision_square = None
         if space_left <= 15:
             # Situations where we're trapped along with another snake
             if len(opps) > 0:
-                dist_to_trapped_opp = self.board.dijkstra_shortest_dist(self.you.head, opps[0])
+                dist_to_trapped_opp, path_to_trapped_opp = self.board.dijkstra_shortest_dist(self.you.head, opps[0], get_path=True)
                 trapped_opp = self.board.identify_snake(opps[0])
                 # We'll win the incoming collision if we're longer and colliding on the same square
                 trapped = not (dist_to_trapped_opp % 2 == 1 and self.you.length > trapped_opp.length)
+                collision_square = path_to_trapped_opp[len(path_to_trapped_opp) // 2] if trapped else None
             else:
                 trapped = True
 
         # If space frees up after X moves, identify where the opening in our flood fill is
         _, boundaries = self.board.flood_fill(self.you.id, return_boundaries=True)
         openings_in_boundary = []
-        for move_num in range(1, available_space):
+        for move_num in range(1, round(available_space)):
             found_opening = False
             # Move all snakes' tails forward by one until we detect a hole in our flood fill boundary
             for snake in self.all_snakes.values():
@@ -377,7 +379,11 @@ class Battlesnake:
             opening = openings_in_boundary[0]
             longest_path_till_opening = self.board.stall_path(self.you.head, opening)
             # We need to make sure we reach the opening before we run out of space
-            trapped = longest_path_till_opening < moves_until_opening
+            if collision_square is None:
+                trapped = longest_path_till_opening < moves_until_opening
+            else:
+                if self.board.closest_dist(self.you.head, opening) < self.board.closest_dist(self.you.head, Pos(collision_square)):
+                    trapped = True
 
         return trapped
 
@@ -410,7 +416,8 @@ class Battlesnake:
         # Are we trapped?
         if available_space_ra <= 15:
             trapped = self.trap_detection(available_space)
-            space_penalty = -1e7 if trapped else 0  # Penalise entrapment more than getting killed by an opponent
+            _, opps = self.board.flood_fill(self.you.id, return_touching_opps=True)
+            space_penalty = -1e7 if trapped and len(opps) == 0 else 0  # Penalise entrapment more than getting killed by an opponent
 
         # Are we in danger of getting edge-killed?
         edge_killed = self.edge_kill_detection(self.you.id)
@@ -431,16 +438,35 @@ class Battlesnake:
                                                                                                      self.opponents[
                                                                                                          opp_id].head))[
                 0]
-            available_enemy_space = self.board.flood_fill(closest_enemy, risk_averse=True, confined_area="auto")
-            if available_enemy_space < 4:
-                kill_bonus = 1000
-            elif available_enemy_space < self.opponents[closest_enemy].length / 3:
-                kill_bonus = 500
+            if len(move := self.get_obvious_moves(self.all_snakes[closest_enemy].id)) == 1:
+                confined_area = move[0]
+            else:
+                confined_area = "auto"
+
+            decide_risk = True if self.you.length > self.all_snakes[closest_enemy].length else False
+            available_enemy_space = self.board.flood_fill(closest_enemy, risk_averse=True, confined_area=confined_area)
+            available_enemy_space_full = self.board.flood_fill(closest_enemy, risk_averse=True)
+
+            available_me_space = self.board.flood_fill(self.you.id, risk_averse=True, confined_area=confined_area)
+            if available_me_space > available_enemy_space:
+                if available_enemy_space_full <= 5:
+                    kill_bonus = 2000
+                elif available_enemy_space < 4:
+                    kill_bonus = 1000
+                elif available_enemy_space < self.opponents[closest_enemy].length / 2.75:  # Used to be 4
+                    kill_bonus = 500
+                else:
+                    kill_bonus = 0
             else:
                 kill_bonus = 0
+            if kill_bonus > 0:
+                # Reward getting closer
+                kill_bonus += 1000 / self.board.closest_dist(self.you.head, self.all_snakes[closest_enemy].head)
         else:
             available_enemy_space = -2
             kill_bonus = 0
+
+
 
         # Get closer to enemy snakes if we're longer
         if 2 >= len(self.opponents) == sum([self.you.length >= s.length + 1 for s in self.opponents.values()]):
@@ -458,17 +484,45 @@ class Battlesnake:
 
         # If we're getting too close to enemy snakes that are longer, RETREAT
         threats = [self.board.dijkstra_shortest_dist(self.you.head, opp.head) for opp in self.opponents.values() if
-                   opp.length > self.you.length and opp.head.within_bounds(self.you.peripheral_vision(return_pos_only=True))]
+                   opp.length > self.you.length and opp.head.within_bounds(
+                       self.you.peripheral_vision(return_pos_only=True))]
         num_threats = (np.count_nonzero(np.array(threats) <= 2) * 2
                        + np.count_nonzero(np.array(threats) == 3) * 1)
+
+        collision_inbound = False
+        me = self.get_obvious_moves(snake_id=self.you.id)
+        closest_enemy = sorted(self.opponents.keys(), key=lambda opp_id: self.board.closest_dist(self.you.head,
+                                                                                                 self.opponents[
+                                                                                                     opp_id].head))[0]
+        them = self.get_obvious_moves(snake_id=closest_enemy)
+        diff_lengths = self.all_snakes[closest_enemy].length - self.you.length
+        if diff_lengths > 0:
+            connection = self.all_snakes[closest_enemy].head.direction_to(self.you.head)
+            # This means they're headed towards us
+            if self.all_snakes[closest_enemy].facing_direction() in connection:
+                if sum([esc in me for esc in connection]) != len(connection):
+                    collision_inbound = True
+        if collision_inbound:
+            danger_penalty = -15 * diff_lengths
+        else:
+            danger_penalty = 0
 
         # Can we cut off our opponents?
         closest_opp = sorted(self.opponents.values(),
                              key=lambda opp: self.board.closest_dist(self.you.head, opp.head))[0]
         if self.you.head.within_bounds(closest_opp.peripheral_vision(return_pos_only=True)) and \
-                not closest_opp.head.within_bounds(self.you.peripheral_vision(direction=self.you.facing_direction(), return_pos_only=True)):
+                not closest_opp.head.within_bounds(
+                    self.you.peripheral_vision(direction=self.you.facing_direction(), return_pos_only=True)) and \
+                self.you.facing_direction() in me:
             cutting_off = self.board.flood_fill(closest_opp.id, cutoff=self.you.id)
-            cutoff_bonus = 2500 if cutting_off <= 15 else 500
+            if cutting_off <= 15:
+                cutoff_bonus = 2500
+            elif cutting_off <= self.board.width * self.board.height / 6:
+                cutoff_bonus = 1000
+            elif cutting_off <= self.board.width * self.board.height / 4:
+                cutoff_bonus = 250
+            else:
+                cutoff_bonus = 0
         else:
             cutoff_bonus = 0
 
@@ -485,7 +539,7 @@ class Battlesnake:
         # Are we in the centre of the board? Maximise control
         centre = range(self.board.width // 2 - 2, self.board.width // 2 + 3)
         in_centre = (self.you.head.as_dict()["x"] in centre and self.you.head.as_dict()["x"] in centre) and (
-                    len(self.opponents) <= 2)
+                len(self.opponents) <= 2)
 
         # Heuristic formula
         depth_weight = 25
@@ -494,7 +548,7 @@ class Battlesnake:
         space_weight = 1
         peripheral_weight = 2
         enemy_restriction_weight = 0 if available_enemy_space == -2 else 75 if len(self.opponents) > 2 else 200
-        food_weight = 250 if health_flag else 175 if shortest_flag else 25 if longest_flag else 50
+        food_weight = 250 if health_flag else 200 if shortest_flag else 25 if longest_flag else 50
 
         length_weight = 300
         centre_control_weight = 10
@@ -505,6 +559,7 @@ class Battlesnake:
         logging.info(f"Available peripheral: {available_peripheral}")
         logging.info(f"Enemy length total: {opponents_left}")
         logging.info(f"Threats within 3 squares of us: {num_threats}")
+        logging.info(f"Incoming collision penalty: {danger_penalty}")
         logging.info(f"Distance to nearest enemy: {dist_to_enemy}")
         logging.info(f"Distance to nearest food: {dist_food}")
         logging.info(f"Layers deep in search tree: {layers_deep}")
@@ -517,7 +572,7 @@ class Battlesnake:
         h = (available_space * space_weight) + space_penalty + \
             (peripheral_weight * available_peripheral) + \
             (enemy_left_weight / (opponents_left + 1)) + \
-            (threat_proximity_weight * num_threats) + \
+            (threat_proximity_weight * num_threats) + danger_penalty + \
             (food_weight / (dist_food + 1)) + \
             (layers_deep * depth_weight) + \
             (self.you.length * length_weight) + \
@@ -551,7 +606,12 @@ class Battlesnake:
             game_over, still_alive = self.is_game_over(for_snake_id=self.you.id, depth=depth)
             if not still_alive:
                 logging.info("Our snake died...")
-                heuristic = -1e6 + (self.minimax_search_depth - depth)  # Reward slower deaths
+                killer_snake = sorted([opp for opp in self.opponents.values() if opp.head == self.you.head], key=lambda op: op.length)
+                killer_penalty = killer_snake[0].length if len(killer_snake) > 0 else 0
+                # How likely is the killer going to deliver the coup de grâce? E.g. if he'd rather get food
+                likelihood_kill, _ = self.board.dist_to_nearest_food(killer_snake[0].id)
+                distraction = likelihood_kill if likelihood_kill <= 4 else 0
+                heuristic = -1e6 + (self.minimax_search_depth - depth) - killer_penalty + distraction * 2  # Reward slower deaths and penalise worse killers
                 return heuristic, None, {"Heur": heuristic}
             # Otherwise, if our snake is ALIVE and is the winner :)
             elif game_over:
@@ -632,77 +692,116 @@ class Battlesnake:
             logging.info(f"DEPTH = {depth} OPPONENT SNAKES")
             logging.info(f"alpha = {alpha} | beta = {beta}")
 
-            # Only simulate full set of opponent moves if they're within a reasonable distance of our snake
+            # Choose to simulate full set of opponent moves only if they're within a certain distance of our snake
             if len(self.opponents) == 1:
                 search_within = self.board.width * self.board.height
-            elif len(self.opponents) <= 3:
+            elif len(self.opponents) == 2:
                 search_within = self.board.width
             else:
-                search_within = self.board.width // 2 + 1
+                search_within = self.board.width // 2
 
-            # Grab all possible opponent moves
-            opps_nearby = 0  # Counter for opponents in our vicinity
-            opps_moves = {}  # Store possible moves for each snake id
+            # Store possible moves for each snake id
+            opps_moves = {}
+            opps_scores = []
             for opp_num, (opp_id, opp_snake) in enumerate(self.opponents.items()):
-                opp_move = self.get_obvious_moves(opp_id, risk_averse=False, sort_by_dist_to=self.you.id)
-                if len(opp_move) == 0:  # If the snake has no legal moves, move down and die
-                    opp_move = ["down"]
-
+                opp_moves = self.get_obvious_moves(opp_id, risk_averse=False, sort_by_dist_to=self.you.id)
+                # If the snake has no legal moves, move down and die
+                if len(opp_moves) == 0:
+                    opp_moves = ["down"]
                 # Save time by only using full opponent move sets if they're within a certain range
-                dist_opp_to_us = self.you.head.manhattan_dist(opp_snake.head)
-                if dist_opp_to_us <= search_within:
-                    opps_moves[opp_id] = opp_move  # Put all of their moves
-                    opps_nearby += 1
-                    logging.info(f"Snake {opp_num + 1} possible moves: {opp_move}")
+                dist_to_opp = self.you.head.manhattan_dist(opp_snake.head)
+                if dist_to_opp <= search_within:
+                    # opps_moves[opp_id] = opp_moves
+                    # For each possible move, estimate how close that brings the opponent to our snake
+                    opp_scores = [
+                        (opp_id,
+                         self.board.closest_dist(self.you.head, opp_snake.head.moved_to(move)) +
+                         (1 / (opp_snake.length + (1 if opp_snake.head.moved_to(move) in self.board.food else 0))) +
+                         ((1 / self.board.flood_fill(opp_id, confined_area=move)) if self.board.flood_fill(opp_id, confined_area=move) >= 1 else 0)
+                         ) for move in opp_moves]
+                    opps_scores.extend(opp_scores)
+                    opp_moves = [x for _, x in sorted(zip([s[1] for s in opp_scores], opp_moves))]
+                    opps_moves[opp_id] = opp_moves
+                    logging.info(f"Snake {opp_num + 1} possible moves: {opp_moves} -> "
+                                 f"{[round(score[1], 2) for score in opps_scores[-len(opp_moves):]]}")
                 else:
-                    opps_moves[opp_id] = [opp_move[0]]
-                    logging.info(f"Snake {opp_num + 1} possible moves: {opp_move} but cut down to {opp_move[0]}")
+                    opps_moves[opp_id] = [opp_moves[0]]
+                    opps_scores.extend([
+                        (opp_id,
+                         self.board.closest_dist(self.you.head, opp_snake.head.moved_to(move)) +
+                         (1 / (opp_snake.length + (1 if opp_snake.head.moved_to(move) in self.board.food else 0))) +
+                         ((1 / self.board.flood_fill(opp_id, confined_area=move)) if self.board.flood_fill(opp_id, confined_area=move) >= 1 else 0)
+                         ) for move in opp_moves])
+                    logging.info(f"Snake {opp_num + 1} possible moves: {opp_moves} but cut down to {opp_moves[0]} ->"
+                                 f"{[round(score[1], 2) for score in opps_scores[-len(opp_moves):]]}")
 
-            sorted_by_dists = sorted(self.opponents.keys(),
-                                     key=lambda opp_id2: self.board.closest_dist(
-                                         self.you.head, self.opponents[opp_id2].head))
-            opps_moves = dict(sorted(opps_moves.items(), key=lambda pair: sorted_by_dists.index(pair[0])))
+            # A list of tuples, with each tuple storing (opp_id, threat_score)
+            threat_opps = sorted(opps_scores, key=lambda combo: combo[1])
+            # Aggregate a list of move dictionaries for each snake
+            # Each board will pivot around one snake's move, with the other opponents filling in with their best moves
+            sim_move_combos = []
+            opp_focus_tracker = {}
+            num_sims = 3
+            for worst_combo in threat_opps:
+                worst_move_combos = {}
+                worst_opp = worst_combo[0]  # The snake ID of the perpetrator
+                if worst_opp not in opp_focus_tracker.keys():
+                    opp_focus_tracker[worst_opp] = []
+                worst_move_combos[worst_opp] = [move for move in opps_moves[worst_opp]
+                                                if not (len(opps_moves[worst_opp]) > 1 and move in opp_focus_tracker[worst_opp])][0]
 
+                opp_focus_tracker[worst_opp].append(opps_moves[worst_opp][0])
+
+                # Select the most threatening move for the rest of the opponent snakes
+                for rest_opp in self.opponents.keys():
+                    if rest_opp != worst_opp:
+                        worst_move_combos[rest_opp] = opps_moves[rest_opp][0]
+
+                # Avoid accidentally adding the same move combination
+                if worst_move_combos not in sim_move_combos:
+                    sim_move_combos.append(worst_move_combos)
+
+                # Stop simulating movesets after a cutoff value
+                if len(sim_move_combos) >= num_sims:
+                    break
+
+            # # Sort opponents by proximity to our snake, and then applying sorting to opponent movesets
+            # sorted_by_dists = sorted(self.opponents.keys(),
+            #                          key=lambda opp_id2: self.board.closest_dist(
+            #                              self.you.head, self.opponents[opp_id2].head))
+            # opps_moves = dict(sorted(opps_moves.items(), key=lambda pair: sorted_by_dists.index(pair[0])))
+            #
             clock_in = time.time_ns()
-            # If >= 3 board simulations, then randomly sample 3 of them based on how threatening the position is to our
-            # snake to cut down on runtime
-            all_opp_combos = list(itertools.product(*opps_moves.values()))
-            if len(all_opp_combos) > 2 and len(self.opponents) > 2:
-                logging.info(f"FOUND {len(all_opp_combos)} BOARDS BUT CUTTING DOWN TO 2")
-                cutoff = 3
-            elif len(all_opp_combos) > 3:
-                logging.info(f"FOUND {len(all_opp_combos)} BOARDS BUT CUTTING DOWN TO 3")
-                cutoff = 3
-            else:
-                cutoff = 3
-
-            if len(opps_moves) > 0 and len(all_opp_combos) > cutoff:
-                covered_ids = [list(opps_moves.keys())[0]]
-                all_opp_combos2 = []
-                while len(all_opp_combos2) < cutoff:
-                    combo_counter = 1
-                    for s_id, s in opps_moves.items():
-                        if s_id not in covered_ids:
-                            combo_counter = combo_counter * len(s)
-                    index_getter = np.arange(len(covered_ids) - 1, len(all_opp_combos), combo_counter)
-                    getter = [all_opp_combos[i] for i in index_getter]
-                    all_opp_combos2.extend(getter)
-
-                all_opp_combos = all_opp_combos2[:cutoff]
+            # # If >= 3 board simulations, then randomly sample 3 of them based on how threatening the position is to our
+            # # snake to cut down on runtime
+            # all_opp_combos = list(itertools.product(*opps_moves.values()))
+            # if len(all_opp_combos) > 2:
+            #     logging.info(f"FOUND {len(all_opp_combos)} BOARDS BUT CUTTING DOWN TO 3")
+            #     cutoff = 3
+            # else:
+            #     cutoff = 3
+            #
+            # if len(opps_moves) > 0 and len(all_opp_combos) > cutoff:
+            #     covered_ids = [list(opps_moves.keys())[0]]
+            #     all_opp_combos2 = []
+            #     while len(all_opp_combos2) < cutoff:
+            #         combo_counter = 1
+            #         for s_id, s in opps_moves.items():
+            #             if s_id not in covered_ids:
+            #                 combo_counter = combo_counter * len(s)
+            #         index_getter = np.arange(len(covered_ids) - 1, len(all_opp_combos), combo_counter)
+            #         getter = [all_opp_combos[i] for i in index_getter]
+            #         all_opp_combos2.extend(getter)
+            #
+            #     all_opp_combos = all_opp_combos2[:cutoff]
 
             possible_movesets = []
             possible_sims = []
             # Get all possible boards by simulating moves for each opponent snake, one at a time
-            # SIMULATED_BOARD_INSTANCE = self.__copy__()
-            for move_combo in all_opp_combos:
-                opp_move_dict = {}
-                for num, move in enumerate(move_combo):
-                    # evaluate_flag = (num + 1 == len(move_combo))
-                    opp_move_dict[list(opps_moves.keys())[num]] = move
-
-                SIMULATED_BOARD_INSTANCE2 = self.simulate_move(opp_move_dict, evaluate_deaths=True)
+            for move_combo in sim_move_combos:
+                SIMULATED_BOARD_INSTANCE2 = self.simulate_move(move_combo, evaluate_deaths=True)
                 possible_sims.append(SIMULATED_BOARD_INSTANCE2)
-                possible_movesets.append(move_combo)
+                possible_movesets.append(list(move_combo.values()))
 
             logging.info(f"Simulated {len(possible_sims)} possible move combos in "
                          f"{round((time.time_ns() - clock_in) / 1000000, 3)} ms")

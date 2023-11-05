@@ -109,10 +109,10 @@ class Board:
         """
         closest = self.dijkstra_shortest_dist(start, end)
         if closest == 1e6:
-            closest = start.manhattan_dist(end)
+            closest += start.manhattan_dist(end)
         return closest
 
-    def dijkstra_shortest_dist(self, start: Pos, end: Pos) -> int:
+    def dijkstra_shortest_dist(self, start: Pos, end: Pos, get_path: Optional[bool] = False) -> int | tuple[int, list]:
         """
         Return the shortest path between two positions using Dijkstra's algorithm implemented in networkx
 
@@ -130,11 +130,15 @@ class Board:
             path = nx.shortest_path(temp_graph, start, end)
             shortest = len(path)
         except nx.exception.NetworkXNoPath:
+            path = None
             shortest = 1e6
 
         for temp_nodes in temp_added_nodes:
             temp_graph.remove_node(temp_nodes)
-        return shortest
+        if get_path:
+            return shortest, path
+        else:
+            return shortest
 
     @staticmethod
     def check_missing_nodes(G: nx.Graph, nodes: list[tuple]):
@@ -349,6 +353,8 @@ class Board:
             board = board[xs[0]:xs[1], ys[0]:ys[1]]
 
         def fill(x, y, board, initial_square):
+            if board.size == 0:  # Empty board
+                return
             if board[x][y] == "H":  # Opponent snake heads
                 heads_in_contact.append(Pos(x, y))
                 boundary_pos.append(Pos(x, y))
@@ -368,7 +374,7 @@ class Board:
         heads_in_contact = []
         fill(head.x, head.y, board, initial_square=True)
         filled = sum((row == "£").sum() for row in board)
-        flood_fill = max(filled - 1, 0)  # Exclude the head from the count, but cannot ever be negative
+        flood_fill = max(filled - 1, 1e-15)  # Exclude the head from the count, but cannot ever be negative
 
         if return_boundaries:
             return flood_fill, boundary_pos
