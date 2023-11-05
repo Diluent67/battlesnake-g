@@ -564,7 +564,7 @@ class Battlesnake:
         in_centre = (self.you.head.as_dict()["x"] in centre and self.you.head.as_dict()["x"] in centre) and (
                 len(self.opponents) <= 2)
         # Are we on the edge? Try to stay away if possible
-        on_edge = self.you.head.x in [0, self.board.width] or self.you.head.y in [0, self.board.height]
+        on_edge = self.you.head.x in [0, self.board.width - 1] or self.you.head.y in [0, self.board.height - 1]
 
         # Heuristic formula
         depth_weight = 25
@@ -579,7 +579,7 @@ class Battlesnake:
             food_weight = 10
             peripheral_weight = 0.5
         length_weight = 300
-        centre_control_weight = 5
+        centre_control_weight = 25
         threat_proximity_weight = -25
 
         logging.info(f"Available space: {space_ra}")
@@ -595,7 +595,7 @@ class Battlesnake:
         logging.info(f"Available enemy space: {available_enemy_space}")
         logging.info(f"Cutoff bonus: {cutoff_bonus}")
         logging.info(f"Kill bonus: {kill_bonus}")
-        logging.info(f"In centre: {in_centre}")
+        logging.info(f"In centre: {in_centre}; On edge: {on_edge}")
         logging.info(f"Length: {self.you.length}")
 
         h = (space_ra * space_weight) + space_penalty + \
