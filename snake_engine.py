@@ -174,8 +174,8 @@ class Battlesnake:
                 # Skip the snake if it died
                 valid_move, _ = self.board.is_pos_safe(new_head, snake_id,
                                                        turn="ours" if not evaluate_deaths else "opponents")
+                new_head = new_head.as_dict()
                 if valid_move:
-                    new_head = new_head.as_dict()
                     snake_dict["health"] = snake.health - 1
                     snake_dict["body"] = [new_head] + snake.body_dict[:-1]
                     snake_dict["head"] = new_head
@@ -186,6 +186,7 @@ class Battlesnake:
                     you_dict["health"] = self.you.health - 1
                     you_dict["body"] = [new_head] + self.you.body_dict[:-1]
                     you_dict["head"] = new_head
+                    you_dict["food_eaten"] = new_head if Pos(new_head) in self.board.food else None
             else:
                 # Add the snake without any changes
                 all_snakes.append(snake_dict)
@@ -609,7 +610,7 @@ class Battlesnake:
                 killer_snake = sorted([opp for opp in self.opponents.values() if opp.head == self.you.head], key=lambda op: op.length)
                 killer_penalty = killer_snake[0].length if len(killer_snake) > 0 else 0
                 # How likely is the killer going to deliver the coup de grâce? E.g. if he'd rather get food
-                likelihood_kill, _ = self.board.dist_to_nearest_food(killer_snake[0].id)
+                likelihood_kill = self.board.dist_to_nearest_food(killer_snake[0].id)[0] if len(killer_snake) > 0 else 0
                 distraction = likelihood_kill if likelihood_kill <= 4 else 0
                 heuristic = -1e6 + (self.minimax_search_depth - depth) - killer_penalty + distraction * 2  # Reward slower deaths and penalise worse killers
                 return heuristic, None, {"Heur": heuristic}

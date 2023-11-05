@@ -1,7 +1,7 @@
 from snake_engine import Battlesnake
 
 
-game_state = {'turn': 139, 'board': {'height': 11, 'width': 11, 'food': [{'x': 10, 'y': 0}], 'hazards': [], 'snakes': [{'id': '30b31eb5-c9cf-48e7-9c40-b3824fff2cc3', 'name': 'Nightwing', 'health': 82, 'body': [{'x': 5, 'y': 7}, {'x': 5, 'y': 6}, {'x': 4, 'y': 6}, {'x': 3, 'y': 6}, {'x': 3, 'y': 5}, {'x': 4, 'y': 5}, {'x': 5, 'y': 5}, {'x': 5, 'y': 4}, {'x': 4, 'y': 4}, {'x': 4, 'y': 3}, {'x': 3, 'y': 3}, {'x': 3, 'y': 2}, {'x': 2, 'y': 2}], 'head': {'x': 5, 'y': 7}, 'length': 13, 'food_eaten': None}, {'id': '46b6ee1d-6ed1-472b-ab03-53fff9c83431', 'name': 'JonK', 'health': 91, 'body': [{'x': 6, 'y': 3}, {'x': 6, 'y': 2}, {'x': 5, 'y': 2}, {'x': 5, 'y': 1}, {'x': 5, 'y': 0}, {'x': 6, 'y': 0}, {'x': 6, 'y': 1}, {'x': 7, 'y': 1}, {'x': 7, 'y': 0}, {'x': 8, 'y': 0}, {'x': 8, 'y': 1}, {'x': 8, 'y': 2}, {'x': 7, 'y': 2}, {'x': 7, 'y': 3}, {'x': 7, 'y': 4}, {'x': 7, 'y': 5}], 'head': {'x': 6, 'y': 3}, 'length': 16, 'food_eaten': None}]}, 'you': {'id': '30b31eb5-c9cf-48e7-9c40-b3824fff2cc3', 'name': 'Nightwing', 'health': 82, 'body': [{'x': 5, 'y': 7}, {'x': 5, 'y': 6}, {'x': 4, 'y': 6}, {'x': 3, 'y': 6}, {'x': 3, 'y': 5}, {'x': 4, 'y': 5}, {'x': 5, 'y': 5}, {'x': 5, 'y': 4}, {'x': 4, 'y': 4}, {'x': 4, 'y': 3}, {'x': 3, 'y': 3}, {'x': 3, 'y': 2}, {'x': 2, 'y': 2}], 'head': {'x': 5, 'y': 7}, 'length': 13, 'food_eaten': None}}
+game_state = {'turn': 118, 'board': {'height': 11, 'width': 11, 'food': [{'x': 9, 'y': 10}, {'x': 1, 'y': 0}], 'hazards': [], 'snakes': [{'id': 'd5e07ec6-ad02-40ac-b718-07acc29d2585', 'name': 'Nightwing', 'health': 67, 'body': [{'x': 7, 'y': 4}, {'x': 7, 'y': 3}, {'x': 6, 'y': 3}, {'x': 6, 'y': 4}, {'x': 6, 'y': 5}, {'x': 7, 'y': 5}, {'x': 8, 'y': 5}, {'x': 8, 'y': 4}, {'x': 8, 'y': 3}], 'head': {'x': 7, 'y': 4}, 'length': 9, 'food_eaten': None}, {'id': 'cbb9ad4b-82a2-421b-a16a-1c98c3d61b2a', 'name': 'Rick2', 'health': 98, 'body': [{'x': 5, 'y': 2}, {'x': 4, 'y': 2}, {'x': 3, 'y': 2}, {'x': 3, 'y': 3}, {'x': 3, 'y': 4}, {'x': 3, 'y': 5}, {'x': 4, 'y': 5}], 'head': {'x': 5, 'y': 2}, 'length': 7, 'food_eaten': None}, {'id': 'e30f8f2d-802f-49c6-acee-44ed46d17975', 'name': 'JonK3', 'health': 98, 'body': [{'x': 6, 'y': 9}, {'x': 6, 'y': 10}, {'x': 5, 'y': 10}, {'x': 5, 'y': 9}, {'x': 5, 'y': 8}, {'x': 4, 'y': 8}, {'x': 3, 'y': 8}, {'x': 3, 'y': 7}, {'x': 2, 'y': 7}, {'x': 1, 'y': 7}, {'x': 1, 'y': 6}, {'x': 0, 'y': 6}, {'x': 0, 'y': 7}, {'x': 0, 'y': 8}, {'x': 1, 'y': 8}], 'head': {'x': 6, 'y': 9}, 'length': 15, 'food_eaten': None}]}, 'you': {'id': 'd5e07ec6-ad02-40ac-b718-07acc29d2585', 'name': 'Nightwing', 'health': 67, 'body': [{'x': 7, 'y': 4}, {'x': 7, 'y': 3}, {'x': 6, 'y': 3}, {'x': 6, 'y': 4}, {'x': 6, 'y': 5}, {'x': 7, 'y': 5}, {'x': 8, 'y': 5}, {'x': 8, 'y': 4}, {'x': 8, 'y': 3}], 'head': {'x': 7, 'y': 4}, 'length': 9, 'food_eaten': None}}
 
 b = Battlesnake(game_state, debugging=True)
 
@@ -77,3 +77,6 @@ for worst_combo in threat_opps:
     # Stop simulating movesets after a cutoff value
     if len(sim_move_combos) >= num_sims:
         break
+
+
+SIMULATED_BOARD_INSTANCE = b.simulate_move({b.you.id: "down"})
