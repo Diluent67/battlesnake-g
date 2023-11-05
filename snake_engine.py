@@ -164,7 +164,7 @@ class Battlesnake:
         # Loop through all snakes and simulate a move if provided
         all_snakes: list[dict] = []
         for snake_id, snake in self.all_snakes.items():
-            snake_dict = snake.as_dict()
+            snake_dict = snake.as_dict()  # TODO add this into the Snake class?
             if snake_id in move_dict:
                 # Update the head, body, and health of the snake to reflect the simulated move
                 new_head = snake.head.moved_to(move_dict[snake_id])
@@ -605,7 +605,7 @@ class Battlesnake:
         if kill_bonus > 0:
             food_weight = 10
             peripheral_weight = 0.5
-        length_weight = 300
+        length_weight = 1250
         centre_control_weight = 20
         threat_proximity_weight = -25
 
