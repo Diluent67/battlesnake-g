@@ -295,14 +295,21 @@ class Battlesnake:
                 # Off-limits if it's outside the board
                 if bounds[0] <= esc_attempt < bounds[1]:
                     # Look at the space in the column/row ahead of us
-                    strip = board[esc_attempt, getattr(snake.head, ax_dir):] if scan_dir == +1 \
-                        else board[esc_attempt, :(getattr(snake.head, ax_dir) + 1)][::-1]
+                    if ax == "x":
+                        strip = board[esc_attempt, getattr(snake.head, ax_dir):] if scan_dir == +1 \
+                            else board[esc_attempt, :(getattr(snake.head, ax_dir) + 1)][::-1]
+                    else:
+                        strip = board[getattr(snake.head, ax_dir):, esc_attempt] if scan_dir == +1 \
+                            else board[:(getattr(snake.head, ax_dir) + 1), esc_attempt][::-1]
                     # If there's an opponent head in front of us, we might be getting edge-killed
                     if "H" in strip:
                         # Focus on the portion preceded by an opponent head to determine if we're being edge-killed
                         danger_strip = strip[:np.where(strip == "H")[0][0]]
                         # Identify the possible killer
-                        opp_loc = Pos(esc_attempt, getattr(snake.head.moved_to(direction, len(danger_strip)), ax_dir))
+                        if ax == "x":
+                            opp_loc = Pos(esc_attempt, getattr(snake.head.moved_to(direction, len(danger_strip)), ax_dir))
+                        else:
+                            opp_loc = Pos(getattr(snake.head.moved_to(direction, len(danger_strip)), ax_dir), esc_attempt)
                         opp_killer = self.board.identify_snake(opp_loc)
                         # Check if the opponent is bound to turn around and collide with us
                         opp_next_dirs = self.get_obvious_moves(opp_killer.id, risk_averse=False)
@@ -456,7 +463,7 @@ class Battlesnake:
             available_enemy_space = self.board.flood_fill(closest_enemy, risk_averse=True, confined_area=confined_area)
             available_enemy_space_full = self.board.flood_fill(closest_enemy, risk_averse=True)
 
-            if peripheral > available_enemy_space:
+            if peripheral > available_enemy_space or space_all > available_enemy_space_full:
                 if available_enemy_space_full <= 5:
                     kill_bonus = 2000
                 elif available_enemy_space < 4:
@@ -531,6 +538,13 @@ class Battlesnake:
                 cutoff_bonus = 0
         else:
             cutoff_bonus = 0
+
+        # Can we get cut off?
+        if len(self.opponents) == 1 and self.you.length < closest_opp.length:
+            opp_cutoff = self.board.flood_fill(self.you.id, cutoff=closest_opp.id)
+            if opp_cutoff <= 15:
+                if space_penalty == 0:
+                    space_penalty = -500
 
         # Determine the closest safe distance to food
         dist_food, best_food = self.board.dist_to_nearest_food(self.you.id)
