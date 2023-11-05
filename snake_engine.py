@@ -492,7 +492,7 @@ class Battlesnake:
         else:
             dist_to_enemy = 0
         if dist_to_enemy > 0 and len(self.opponents) == 1:
-            aggression_weight = 1000
+            aggression_weight = 1500
         elif dist_to_enemy > 0:
             aggression_weight = 250
         else:
@@ -579,7 +579,7 @@ class Battlesnake:
             food_weight = 10
             peripheral_weight = 0.5
         length_weight = 300
-        centre_control_weight = 25
+        centre_control_weight = 20
         threat_proximity_weight = -25
 
         logging.info(f"Available space: {space_ra}")
