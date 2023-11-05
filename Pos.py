@@ -93,6 +93,6 @@ class Pos:
 
     def within_bounds(self, bounds):
         xs, ys = bounds
-        return xs[0] <= self.x <= xs[1] and ys[0] <= self.y <= ys[1]
+        return xs[0] <= self.x < xs[1] and ys[0] <= self.y < ys[1]
 
     

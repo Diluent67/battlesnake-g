@@ -327,6 +327,7 @@ class Board:
         :param cutoff:
         :param return_boundaries: Option to return a list of positions that represent the edges of our flood fill
         :param return_touching_opps: Option to return a list of other snakes whose heads our flood fill is touching
+        :param full_package:
 
         :return:
             The total area of the flood fill selection

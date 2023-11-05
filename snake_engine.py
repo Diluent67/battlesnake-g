@@ -841,12 +841,17 @@ class Battlesnake:
 
     def optimal_move(self):
         """Let's run the minimax algorithm with alpha-beta pruning!"""
-        tree_tracker[self.minimax_search_depth].append(0)
+        if self.turn <= 3:
+            depth = 2
+        else:
+            depth = self.minimax_search_depth
+
+        tree_tracker[depth].append(0)
 
         logging.info("STARTING POSITION")
         logging.info(self.board.display(show=False))
         # Compute the best score of each move using the minimax algorithm with alpha-beta pruning
-        _, best_move, _ = self.minimax(depth=self.minimax_search_depth, alpha=-np.inf, beta=np.inf, maximising_snake=True)
+        _, best_move, _ = self.minimax(depth=depth, alpha=-np.inf, beta=np.inf, maximising_snake=True)
 
         # Output a visualisation of the minimax decision tree for debugging
         if self.debugging:
