@@ -263,7 +263,7 @@ class Board:
                 # Flag a move as risky if it could lead to a losing head-to-head collision
                 elif (snake_id != opp_id  # Skip the same snake we're evaluating
                       and length <= opp_snake.length  # Only if the other snake is the same length or longer
-                      and pos.manhattan_dist(opp_snake.head) == 2):  # Only if we're collision-bound
+                      and pos.manhattan_dist(opp_snake.head) <= 2):  # Only if we're collision-bound
                     risky_flag = True
 
             elif turn == "opponents":
