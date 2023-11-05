@@ -54,6 +54,7 @@ class Battlesnake:
 
         # Finish up our constructor
         self.dict = game_state
+        self.og_snakes = self.all_snakes.copy()  # For keeping track of which snakes get killed
         self.minimax_search_depth = 4  # Depth for minimax algorithm
         self.peripheral_size = 3  # Length of our snake's "peripheral vision"
         self.debugging = debugging
@@ -82,9 +83,9 @@ class Battlesnake:
             each move will give us in our "peripheral vision". Very useful for discerning which moves allow us more
             immediate space.
 
-        :return: A list of possible moves for the given snake
+        :return: A (possibly) sorted list of possible moves for the given snake
         """
-        # Loop through possible moves and remove from consideration if it's invalid
+        # Loop through possible moves and remove from consideration if it's invalid + keep track of risky moves
         possible_moves = ["up", "down", "left", "right"]
         risky_moves = []
         head = self.all_snakes[snake_id].head
@@ -114,12 +115,12 @@ class Battlesnake:
 
         return possible_moves
 
-    def is_game_over(self, for_snake_id: str | list, depth: Optional[int] = None) -> tuple[bool, bool]:
+    def is_game_over(self, for_snake_id: Optional[str] = None, depth: Optional[int] = 4) -> tuple[bool, bool]:
         """
-        Determine if the game ended for certain snakes or not. Mostly used to know whether our snake died, but can
-        optionally be used to determine any number of opponent snakes' statuses.
+        Determine if the game is over for our snake. Can optionally be used to determine whether an opponent snake is
+        dead or not.
 
-        :param for_snake_id: The ID of the desired snake we want to know died or not
+        :param for_snake_id: The ID of the desired snake that we want to know died or not
         :param depth: During minimax, things get complicated when we call this function right after making a move for
             our snake but before the opponent snakes have made moves. We only want to return True when a complete turn
             is done (e.g. our snake made a move and our opponents did as well). Thus, we need the current depth that
@@ -135,17 +136,14 @@ class Battlesnake:
 
         snake_monitor = {}  # A dictionary for each snake showing whether they're alive
         for snake_id, snake in self.all_snakes.items():
-            # Check if each snake's head is in a safe square, depending on if we're at a depth where only we made a move
+            # Check that the snake is on a safe square (depending on if we're at a depth where only we've made a move)
             is_safe, _ = self.board.is_pos_safe(snake.head, snake_id, turn="done" if depth % 2 == 0 else "ours")
             snake_monitor[snake_id] = is_safe
 
         # Game is over if there's only one snake remaining or if our snake died
         game_over = True if (sum(snake_monitor.values()) == 1 or not snake_monitor[self.you.id]) else False
         # See if a specific snake is alive or not
-        if isinstance(for_snake_id, list):
-            snake_still_alive = [snake_monitor[snake_id] for snake_id in for_snake_id]
-        else:
-            snake_still_alive = snake_monitor[for_snake_id]
+        snake_still_alive = snake_monitor[for_snake_id if for_snake_id is not None else self.you.id]
 
         return game_over, snake_still_alive
 
@@ -243,6 +241,7 @@ class Battlesnake:
                 del all_snakes[i]
 
         new_game = Battlesnake({"turn": self.turn, "board": board, "you": you_dict}, debugging=self.debugging)
+        new_game.og_snakes = self.og_snakes
         return new_game
 
     def edge_kill_detection(self, snake_id, us_killing: Optional[bool] = False) -> bool:
@@ -325,9 +324,27 @@ class Battlesnake:
                         if np.count_nonzero(strip == " ") == 0 and self.trapped:
                             trapped_sides[num] = True
 
+                    # Check if there's a snake behind us that can kill us
+                    if ax == "x":
+                        future_threat_pos = Pos(esc_attempt, getattr(snake.head, ax_dir) - 1) if scan_dir == +1 \
+                            else Pos(esc_attempt, getattr(snake.head, ax_dir) + 1)
+                    else:
+                        future_threat_pos = Pos(getattr(snake.head, ax_dir) - 1, esc_attempt) if scan_dir == +1 \
+                            else Pos(getattr(snake.head, ax_dir) + 1, esc_attempt)
+                    future_threat_opp = [opp_snake.id for opp_snake in opponents if
+                                         opp_snake.head == future_threat_pos]
+                    if len(future_threat_opp) > 0:
+                        threat_id = future_threat_opp[0]
+                        if (self.all_snakes[threat_id].length > snake.length and
+                                direction in self.get_obvious_moves(threat_id)):
+                            trapped_sides[num] = True
+
                     # Check if there's a snake two columns/rows over that can kill us
                     esc_attempt_x2 = snake.head.as_dict()[ax] + (look * 2)
-                    future_threat_pos = Pos(esc_attempt_x2, getattr(snake.head, ax_dir))
+                    if ax == "x":
+                        future_threat_pos = Pos(esc_attempt_x2, getattr(snake.head, ax_dir))
+                    else:
+                        future_threat_pos = Pos(getattr(snake.head, ax_dir), esc_attempt_x2)
                     future_threat_opp = [opp_snake.id for opp_snake in opponents if opp_snake.head == future_threat_pos]
                     if len(future_threat_opp) > 0:
                         threat_id = future_threat_opp[0]
@@ -484,6 +501,12 @@ class Battlesnake:
             available_enemy_space = -2
             kill_bonus = 0
 
+        # Did we kill any opponents previously?
+        if len(self.og_snakes) > len(self.all_snakes):
+            dead_snakes = set(self.og_snakes.keys()) - set(self.all_snakes)
+            likely_kill = [self.you.head.manhattan_dist(self.og_snakes[opp_id].head) <= 4 for opp_id in dead_snakes]
+            kill_bonus += sum([kill * 10000 for kill in likely_kill])
+
         # Get closer to enemy snakes if we're longer
         if 2 >= len(self.opponents) == sum([self.you.length >= s.length + 1 for s in self.opponents.values()]):
             dist_from_enemies = sorted(
@@ -539,6 +562,9 @@ class Battlesnake:
                 cutoff_bonus = 250
             else:
                 cutoff_bonus = 0
+
+            if cutoff_bonus > 0:
+                cutoff_bonus += (cutoff_bonus / (1 + cutting_off))
         else:
             cutoff_bonus = 0
 
@@ -568,7 +594,8 @@ class Battlesnake:
 
         # Heuristic formula
         depth_weight = 25
-        enemy_left_weight = 1000   #TODO test higher values
+        enemy_left_weight = 8 * 100000   #TODO test higher values
+        enemy_length_weight = 1000
 
         space_weight = 1
         peripheral_weight = 2
@@ -600,7 +627,7 @@ class Battlesnake:
 
         h = (space_ra * space_weight) + space_penalty + \
             (peripheral_weight * peripheral) + \
-            (enemy_left_weight / (opponent_lengths + 1)) + \
+            (enemy_length_weight / (opponent_lengths + 1)) + \
             (threat_proximity_weight * num_threats) + danger_penalty + \
             (food_weight / (dist_food + 1)) + \
             (layers_deep * depth_weight) + \
