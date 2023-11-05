@@ -1,5 +1,4 @@
 from __future__ import annotations
-import itertools
 import logging
 import matplotlib.pyplot as plt
 import numpy as np
@@ -431,14 +430,24 @@ class Battlesnake:
         # our vicinity)
         dist_from_enemies = sorted(
             [self.board.closest_dist(self.you.head, opp.head) for opp in self.opponents.values()])
-        if len(self.opponents) <= 3 or sum([dist <= 3 for dist in dist_from_enemies]) >= 1:
+        djikstra_flag = sum([dist <= 3 for dist in dist_from_enemies]) >= 1
+        dist_from_enemies_manhattan = sorted(
+            [self.you.head.manhattan_dist(opp.head) for opp in self.opponents.values()])
+        manhattan_flag = sum([dist <= 5 for dist in dist_from_enemies_manhattan]) >= 1
+        if len(self.opponents) <= 3 or djikstra_flag or manhattan_flag:
             # and sum([dist < (self.board.width // 2) for dist in self.dist_from_enemies()]) <= 3 \
             # and len(self.opponents) == sum([self.you.length > s["length"] for s in self.opponents.values()]):
             self.peripheral_size = 4
-            closest_enemy = sorted(self.opponents.keys(), key=lambda opp_id: self.board.closest_dist(self.you.head,
-                                                                                                     self.opponents[
-                                                                                                         opp_id].head))[
-                0]
+            if djikstra_flag:
+                closest_enemy = sorted(self.opponents.keys(), key=lambda opp_id: self.board.closest_dist(self.you.head,
+                                                                                                         self.opponents[
+                                                                                                             opp_id].head))[
+                    0]
+            else:
+                closest_enemy = sorted(self.opponents.keys(), key=lambda opp_id: self.you.head.manhattan_dist(self.opponents[
+                                                                                                             opp_id].head))[
+                    0]
+
             if len(move := self.get_obvious_moves(self.all_snakes[closest_enemy].id)) == 1:
                 confined_area = move[0]
             else:
@@ -766,36 +775,7 @@ class Battlesnake:
                 if len(sim_move_combos) >= num_sims:
                     break
 
-            # # Sort opponents by proximity to our snake, and then applying sorting to opponent movesets
-            # sorted_by_dists = sorted(self.opponents.keys(),
-            #                          key=lambda opp_id2: self.board.closest_dist(
-            #                              self.you.head, self.opponents[opp_id2].head))
-            # opps_moves = dict(sorted(opps_moves.items(), key=lambda pair: sorted_by_dists.index(pair[0])))
-            #
             clock_in = time.time_ns()
-            # # If >= 3 board simulations, then randomly sample 3 of them based on how threatening the position is to our
-            # # snake to cut down on runtime
-            # all_opp_combos = list(itertools.product(*opps_moves.values()))
-            # if len(all_opp_combos) > 2:
-            #     logging.info(f"FOUND {len(all_opp_combos)} BOARDS BUT CUTTING DOWN TO 3")
-            #     cutoff = 3
-            # else:
-            #     cutoff = 3
-            #
-            # if len(opps_moves) > 0 and len(all_opp_combos) > cutoff:
-            #     covered_ids = [list(opps_moves.keys())[0]]
-            #     all_opp_combos2 = []
-            #     while len(all_opp_combos2) < cutoff:
-            #         combo_counter = 1
-            #         for s_id, s in opps_moves.items():
-            #             if s_id not in covered_ids:
-            #                 combo_counter = combo_counter * len(s)
-            #         index_getter = np.arange(len(covered_ids) - 1, len(all_opp_combos), combo_counter)
-            #         getter = [all_opp_combos[i] for i in index_getter]
-            #         all_opp_combos2.extend(getter)
-            #
-            #     all_opp_combos = all_opp_combos2[:cutoff]
-
             possible_movesets = []
             possible_sims = []
             # Get all possible boards by simulating moves for each opponent snake, one at a time
@@ -851,21 +831,12 @@ class Battlesnake:
 
     def optimal_move(self):
         """Let's run the minimax algorithm with alpha-beta pruning!"""
-        # Compute the best score of each move using the minimax algorithm with alpha-beta pruning
-        if self.turn < 3:  # Our first 3 moves are super self-explanatory tbh
-            search_depth = 4
-        elif len(self.opponents) > 6:
-            search_depth = 4  # TODO should be risk-averse
-        elif len(self.opponents) >= 4:
-            search_depth = 4
-        else:
-            search_depth = 4
-
-        tree_tracker[search_depth].append(0)
+        tree_tracker[self.minimax_search_depth].append(0)
 
         logging.info("STARTING POSITION")
         logging.info(self.board.__str__())
-        _, best_move, _ = self.minimax(depth=search_depth, alpha=-np.inf, beta=np.inf, maximising_snake=True)
+        # Compute the best score of each move using the minimax algorithm with alpha-beta pruning
+        _, best_move, _ = self.minimax(depth=self.minimax_search_depth, alpha=-np.inf, beta=np.inf, maximising_snake=True)
 
         # Output a visualisation of the minimax decision tree for debugging
         if self.debugging:
