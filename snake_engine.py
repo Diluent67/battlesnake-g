@@ -324,7 +324,7 @@ class Battlesnake:
                     future_threat_opp = [opp_snake.id for opp_snake in opponents if opp_snake.head == future_threat_pos]
                     if len(future_threat_opp) > 0:
                         threat_id = future_threat_opp[0]
-                        if (self.all_snakes[threat_id].length >= snake.length and
+                        if (self.all_snakes[threat_id].length > snake.length and
                                 direction in self.get_obvious_moves(threat_id)):
                             trapped_sides[num] = True
                 else:
@@ -546,6 +546,8 @@ class Battlesnake:
         centre = range(self.board.width // 2 - 2, self.board.width // 2 + 3)
         in_centre = (self.you.head.as_dict()["x"] in centre and self.you.head.as_dict()["x"] in centre) and (
                 len(self.opponents) <= 2)
+        # Are we on the edge? Try to stay away if possible
+        on_edge = self.you.head.x in [0, self.board.width] or self.you.head.y in [0, self.board.height]
 
         # Heuristic formula
         depth_weight = 25
@@ -560,7 +562,7 @@ class Battlesnake:
             food_weight = 10
             peripheral_weight = 0.5
         length_weight = 300
-        centre_control_weight = 10
+        centre_control_weight = 5
         threat_proximity_weight = -25
 
         logging.info(f"Available space: {space_ra}")
@@ -587,6 +589,7 @@ class Battlesnake:
             (layers_deep * depth_weight) + \
             (self.you.length * length_weight) + \
             in_centre * centre_control_weight + \
+            on_edge * -centre_control_weight + \
             aggression_weight / (dist_to_enemy + 1) + cutoff_bonus + \
             (enemy_restriction_weight / (available_enemy_space + 1)) + kill_bonus
 
