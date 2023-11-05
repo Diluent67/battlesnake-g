@@ -190,16 +190,25 @@ class Board:
         best_food = None
         you = self.all_snakes[snake_id]
         opponents = [snake for snake in self.all_snakes.values() if snake.id != snake_id]
-        for food in self.food:
+        sorted_food = sorted(self.food, key=lambda f: you.head.manhattan_dist(f))
+        for food in sorted_food:
             dist = self.dijkstra_shortest_dist(food, you.head)
             # If an enemy snake is longer than ours, and we're both 2 squares away from food, then they're technically
-            # closer to it since they'd win the head-to-head battle.
-            dist_enemy = min([self.dijkstra_shortest_dist(food, snake.head) if snake.length < you.length
-                              else self.dijkstra_shortest_dist(food, snake.head) - 1
-                              for snake in opponents])
+            # closer to it since they'd win the head-to-head battle
+            closest_opps = [opp for opp in opponents if opp.head.manhattan_dist(food) <= dist]
+            if len(closest_opps) == 0:
+                dist_enemy = 1e6
+            else:
+                dist_enemy = min([self.dijkstra_shortest_dist(food, snake.head) if snake.length < you.length
+                                  else self.dijkstra_shortest_dist(food, snake.head) - 1 for snake in closest_opps])
+            # dist_enemy = min([self.dijkstra_shortest_dist(food, snake.head) if snake.length < you.length
+            #                   else self.dijkstra_shortest_dist(food, snake.head) - 1
+            #                   for snake in opponents])
             if dist < best_dist and dist_enemy >= dist:
                 best_dist = dist
                 best_food = food
+            else:
+                break
         return best_dist, best_food
 
     def is_pos_safe(
