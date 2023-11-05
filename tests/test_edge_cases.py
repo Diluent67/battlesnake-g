@@ -116,6 +116,11 @@ def test_aggression():
     next_move = Battlesnake(game_state).optimal_move()
     assert next_move in ["left"]
 
+    # Go for kill
+    game_state ={"game":{"id":"9ac7f829-ebe8-4273-8f60-1634af7a7d45","ruleset":{"name":"standard","version":"cli","settings":{"foodSpawnChance":15,"minimumFood":1,"hazardDamagePerTurn":14,"hazardMap":"","hazardMapAuthor":"","royale":{"shrinkEveryNTurns":25},"squad":{"allowBodyCollisions":False,"sharedElimination":False,"sharedHealth":False,"sharedLength":False}}},"map":"standard","timeout":500,"source":""},"turn":74,"board":{"height":11,"width":11,"snakes":[{"id":"e54c43c7-aabf-4646-aef0-3e3121bf5aaf","name":"Nightwing","latency":"134","health":94,"body":[{"x":1,"y":3},{"x":1,"y":2},{"x":1,"y":1},{"x":2,"y":1},{"x":2,"y":2},{"x":3,"y":2},{"x":3,"y":3},{"x":3,"y":4},{"x":3,"y":5},{"x":2,"y":5}],"head":{"x":1,"y":3},"length":10,"shout":"","squad":"","customizations":{"color":"#3333ff","head":"ski","tail":"mystic-moon"}},{"id":"67dfc723-2509-4495-9254-e4e096b473aa","name":"Rick","latency":"147","health":57,"body":[{"x":2,"y":0},{"x":3,"y":0},{"x":4,"y":0},{"x":4,"y":1},{"x":5,"y":1},{"x":5,"y":2},{"x":4,"y":2}],"head":{"x":2,"y":0},"length":7,"shout":"","squad":"","customizations":{"color":"#00ff00","head":"shark","tail":"coffee"}},{"id":"3ce8aa47-5987-4074-9dd0-a6329743d42c","name":"JonK2","latency":"37","health":100,"body":[{"x":9,"y":1},{"x":10,"y":1},{"x":10,"y":2},{"x":10,"y":3},{"x":9,"y":3},{"x":8,"y":3},{"x":7,"y":3},{"x":7,"y":2},{"x":6,"y":2},{"x":6,"y":1},{"x":6,"y":1}],"head":{"x":9,"y":1},"length":11,"shout":"","squad":"","customizations":{"color":"#B7410E","head":"sleepy","tail":"offroad"}}],"food":[{"x":5,"y":10}],"hazards":[]},"you":{"id":"3ce8aa47-5987-4074-9dd0-a6329743d42c","name":"JonK2","latency":"37","health":100,"body":[{"x":9,"y":1},{"x":10,"y":1},{"x":10,"y":2},{"x":10,"y":3},{"x":9,"y":3},{"x":8,"y":3},{"x":7,"y":3},{"x":7,"y":2},{"x":6,"y":2},{"x":6,"y":1},{"x":6,"y":1}],"head":{"x":9,"y":1},"length":11,"shout":"","squad":"","customizations":{"color":"#B7410E","head":"sleepy","tail":"offroad"}}}
+    next_move = Battlesnake(game_state).optimal_move()
+    assert next_move in ["left"]
+
 
 def test_entrapment():
     # Avoid getting trapped

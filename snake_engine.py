@@ -322,7 +322,7 @@ class Battlesnake:
                                 trapped_sides[num] = True
                     else:
                         # If there's no opponent head, just check to see if there's free space for us to escape to
-                        if np.count_nonzero(strip == " ") == 0:
+                        if np.count_nonzero(strip == " ") == 0 and self.trapped:
                             trapped_sides[num] = True
 
                     # Check if there's a snake two columns/rows over that can kill us
@@ -422,6 +422,9 @@ class Battlesnake:
             trapped = self.trap_detection(space_all)
             # Penalise entrapment (-1e7) more than getting killed by an opponent (-1e6)
             space_penalty = -1e7 if trapped and len(touch_opps) == 0 else 0
+            self.trapped = trapped
+        else:
+            self.trapped = False
 
         # Are we in danger of getting edge-killed?
         edge_killed = self.edge_kill_detection(self.you.id)
@@ -565,7 +568,7 @@ class Battlesnake:
 
         # Heuristic formula
         depth_weight = 25
-        enemy_left_weight = 1000
+        enemy_left_weight = 1000   #TODO test higher values
 
         space_weight = 1
         peripheral_weight = 2
