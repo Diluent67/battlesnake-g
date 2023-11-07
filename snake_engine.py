@@ -652,8 +652,7 @@ class Battlesnake:
         :param alpha: The best value for our maximising snake (us)
         :param beta: The best value for our minimising snakes (opponents)
         :param maximising_snake: If True, it's our snake's turn and the minimax algorithm wants to maximise the score.
-            If False, it's the opponents' turn and the algorithm wants to minimise the score. When we're minimising,
-            we prune the branch if alpha >= beta, and vice-versa when we're maximising.
+            If False, it's the opponents' turn and the algorithm wants to minimise the score.
 
         :return:
             The best heuristic score for the node
@@ -678,7 +677,6 @@ class Battlesnake:
                     killer_penalty = -killer_length + (distraction if distraction <= 4 else 0)
                 heuristic = -1e6 + (self.minimax_search_depth - depth) + killer_penalty  # Reward slower deaths
                 return heuristic, None, {"Score": heuristic}
-
             # If our snake is the winner :)
             elif game_over:
                 logging.info("Our snake won!!")
@@ -751,124 +749,123 @@ class Battlesnake:
             logging.info(f"DEPTH = {depth} OPPONENT SNAKES")
             logging.info(f"alpha = {alpha} | beta = {beta}")
 
-            # Choose to simulate full set of opponent moves only if they're within a certain distance of our snake
+            # Simulate full set of opponent moves only if they're within a certain distance of our snake
             if len(self.opponents) == 1:
-                search_within = self.board.width * self.board.height
+                focus_within = self.board.width * self.board.height
             elif len(self.opponents) == 2:
-                search_within = self.board.width
+                focus_within = self.board.width
             else:
-                search_within = self.board.width // 2
+                focus_within = self.board.width // 2
 
-            # Store possible moves for each snake id
-            opps_moves = {}
-            opps_scores = []
+            opps_moves: dict[str, list] = {}  # Store possible moves for each opponent by their snake ID
+            opps_scores: list[tuple[str, float]] = []  # Estimate the quality of the move with a simple heuristic
             for opp_num, (opp_id, opp_snake) in enumerate(self.opponents.items()):
-                opp_moves = self.get_obvious_moves(opp_id, risk_averse=False, sort_by_dist_to=self.you.id)
-                # If the snake has no legal moves, move down and die
-                if len(opp_moves) == 0:
+                opp_moves = self.get_obvious_moves(opp_id, risk_averse=False)
+                if len(opp_moves) == 0:  # If the opponent has no legal moves, move down and die
                     opp_moves = ["down"]
-                # Save time by only using full opponent move sets if they're within a certain range
-                dist_to_opp = self.you.head.manhattan_dist(opp_snake.head)
-                if dist_to_opp > search_within:
+                # Save time by cutting down the opponent's possible moves to 1 if they're too far to be a threat
+                if self.you.head.manhattan_dist(opp_snake.head) > focus_within:
                     opp_moves = [opp_moves[0]]
-                # For each possible move, estimate how close that brings the opponent to our snake
+                # Assume our opponents are smart - for each possible move, compute how beneficial it'd be for them
+                # Opponent heuristic => favours proximity to our snake, more space, longer length, and penalises death
                 opp_scores = []
                 for move in opp_moves:
-                    opp_snake_head = opp_snake.head.moved_to(move)
-                    dist_from_you = self.board.closest_dist(self.you.head, opp_snake_head)
-                    opp_length = (1 / (opp_snake.length + (1 if opp_snake_head in self.board.food else 0)))
-                    opp_peripheral = self.board.flood_fill(opp_id, risk_averse=False, confined_area=move)
-                    # Assume the opponent won't just commit suicide
-                    opp_penalty = 100 if dist_from_you == 1 and opp_snake.length <= self.you.length else 0
-                    opp_scores.append((opp_id, dist_from_you + opp_length + opp_penalty + ((1 / opp_peripheral) if opp_peripheral >= 1 else 0)))
-
+                    moved_head = opp_snake.head.moved_to(move)
+                    dist_from_us = self.board.closest_dist(self.you.head, moved_head)
+                    opp_space = self.board.flood_fill(opp_id, risk_averse=False, confined_area=move)
+                    opp_length = (1 / (opp_snake.length + (1 if moved_head in self.board.food else 0)))
+                    opp_penalty = 100 if dist_from_us == 1 and opp_snake.length <= self.you.length else 0
+                    opp_scores.append(
+                        (opp_id,
+                         dist_from_us + opp_length + opp_penalty + ((1 / opp_space) if opp_space >= 1 else 0))
+                    )
+                # Sort the opponent moveset by the computed heuristics
                 opp_moves = [x for _, x in sorted(zip([s[1] for s in opp_scores], opp_moves))]
                 opps_moves[opp_id] = opp_moves
+                opps_scores.extend(sorted(opp_scores, key=lambda sc: sc[1]))
                 logging.info(f"Snake {opp_num + 1} possible moves: {opp_moves} -> "                
                              f"{[round(score[1], 2) for score in opp_scores[-len(opp_moves):]]}")
 
-                opps_scores.extend(opp_scores)
-
-            # A list of tuples, with each tuple storing (opp_id, threat_score)
-            threat_opps = sorted(opps_scores, key=lambda combo: combo[1])
-            # Aggregate a list of move dictionaries for each snake
-            # Each board will pivot around one snake's move, with the other opponents filling in with their best moves
-            sim_move_combos = []
-            opp_focus_tracker = {}
-            num_sims = 3
-            for worst_combo in threat_opps:
-                worst_move_combos = {}
-                worst_opp = worst_combo[0]  # The snake ID of the perpetrator
-                if worst_opp not in opp_focus_tracker.keys():
-                    opp_focus_tracker[worst_opp] = []
-                worst_move_combos[worst_opp] = [move for move in opps_moves[worst_opp]
-                                                if not (len(opps_moves[worst_opp]) > 1 and move in opp_focus_tracker[worst_opp])][0]
-
-                opp_focus_tracker[worst_opp].append(opps_moves[worst_opp][0])
-
-                # Select the most threatening move for the rest of the opponent snakes
-                for rest_opp in self.opponents.keys():
-                    if rest_opp != worst_opp:
-                        worst_move_combos[rest_opp] = opps_moves[rest_opp][0]
-
-                # Avoid accidentally adding the same move combination
-                if worst_move_combos not in sim_move_combos:
-                    sim_move_combos.append(worst_move_combos)
-
-                # Stop simulating movesets after a cutoff value
+            # Now that we have ranked moves for each opponent, we need to create move combinations in order of how
+            # threatening they are. The idea is to centre movesets around the "worst" move that ANY opponent can make
+            # and fill in moves for the rest of the opponents in order of how bad they are
+            threat_opps = sorted(opps_scores, key=lambda combo: combo[1])  # Sort all opponent moves by their heuristic
+            worst_opp_tracker = {}  # Keep track of which opponent moves we've finished building move combos around
+            sim_move_combos = []  # Append simulations for final move combinations (each one is a child node)
+            sim_movesets = []  # For each simulation, keep track of the move combination so we don't repeat any
+            num_sims = 3  # The maximum number of move combinations
+            clock_in = time.time_ns()
+            for worst_threat in threat_opps:
+                # Stop simulating movesets after a cutoff
                 if len(sim_move_combos) >= num_sims:
                     break
 
-            clock_in = time.time_ns()
-            possible_movesets = []
-            possible_sims = []
-            # Get all possible boards by simulating moves for each opponent snake, one at a time
-            for move_combo in sim_move_combos:
-                SIMULATED_BOARD_INSTANCE2 = self.simulate_move(move_combo, evaluate_deaths=True)
-                possible_sims.append(SIMULATED_BOARD_INSTANCE2)
-                possible_movesets.append(list(move_combo.values()))
+                worst_opp_id = worst_threat[0]
+                if worst_opp_id not in worst_opp_tracker.keys():
+                    worst_opp_tracker[worst_opp_id] = []
+                # Start the move combo with the most threatening move possible for any opponent
+                move_combo = {
+                    worst_opp_id: [move for move in opps_moves[worst_opp_id] if not (
+                            move in worst_opp_tracker[worst_opp_id] and len(opps_moves[worst_opp_id]) > 1)][0]
+                }
+                worst_opp_tracker[worst_opp_id].append(opps_moves[worst_opp_id][0])
+                # Fill in the rest of the moveset with the most threatening move for each opponent
+                for rest_opp_id in self.opponents.keys():
+                    if rest_opp_id != worst_opp_id:
+                        move_combo[rest_opp_id] = opps_moves[rest_opp_id][0]
+                # Avoid adding the same move combination
+                if move_combo in sim_movesets:
+                    continue
 
-            logging.info(f"Simulated {len(possible_sims)} possible move combos in "
+                # Now simulate a board with the newly created opponent moveset combo!
+                simulation = self.simulate_move(move_combo, evaluate_deaths=True)
+                sim_move_combos.append(simulation)
+                sim_movesets.append(move_combo)
+
+            # Rewrite the move combinations into a user-friendly form for debugging
+            log_movesets = []
+            for move_combo in sim_movesets:
+                log_movesets.append([f"{num + 1}: {move_combo[opp]}" for num, opp in enumerate(self.opponents.keys())])
+            logging.info(f"Simulated {len(sim_move_combos)} possible move combos in "
                          f"{round((time.time_ns() - clock_in) / 1000000, 3)} ms")
 
             clock_in = time.time_ns()
             best_score, best_move, best_node_data, best_edge = np.inf, None, None, None
-            for num, SIMULATED_BOARD_INSTANCE in enumerate(possible_sims):
-                logging.info(f"Visiting {num + 1} of {len(possible_sims)} child nodes: {possible_movesets[num]}")
+            for num, simulation in enumerate(sim_move_combos):
+                logging.info(f"Visiting {num + 1} of {len(sim_move_combos)} child nodes: {log_movesets[num]}")
                 if self.debugging:
-                    logging.info(SIMULATED_BOARD_INSTANCE.board.display(show=False))
-                    logging.info(SIMULATED_BOARD_INSTANCE.dict)
-                clock_in2 = time.time_ns()
+                    logging.info(simulation.board.display(show=False))
+                    logging.info(simulation.dict)
+
+                    # Add the move to the minimax tree plot as a node and create an edge to its parent node
                 edge_added = self.update_tree_graphic(add_edges=True, depth=depth - 1)
-                node_added = self.update_tree_graphic(add_nodes=True, depth=depth - 1,
-                                                            node_data=str(possible_movesets[num]))
-                node_score, node_move, node_data = SIMULATED_BOARD_INSTANCE.minimax(depth - 1, alpha, beta, True)
-                self.update_tree_graphic(add_nodes=True, depth=depth - 1, node_data=node_data,
-                                               insert_at=node_added)
+                node_added = self.update_tree_graphic(add_nodes=True, depth=depth - 1, node_data=str(log_movesets[num]))
+                # Run minimax on the new simulated board
+                clock_in2 = time.time_ns()
+                node_score, node_move, node_data = simulation.minimax(depth - 1, alpha, beta, True)
+                # Update the node we just added with text to display some heuristic information for debugging
+                self.update_tree_graphic(add_nodes=True, depth=depth - 1, node_data=node_data, insert_at=node_added)
 
                 logging.info("=" * 75)
                 logging.info(f"BACK AT DEPTH = {depth} OPPONENT SNAKES")
                 logging.info(f"alpha = {alpha} | beta = {beta}")
 
-                # Update best score and best move
+                # If we found a better score with a different move, update the best move and best edge
                 if np.argmin([best_score, node_score]) == 1:
-                    best_move = possible_movesets[num]
-                    best_node_data, best_edge = node_data, edge_added
+                    best_move, best_node_data, best_edge  = sim_movesets[num], node_data, edge_added
                 best_score = min(best_score, node_score)
-                old_beta = beta
-                beta = min(beta, best_score)
+                old_beta, beta = beta, min(beta, best_score)
+                logging.info(f"Updated beta from {old_beta} to {beta}")
+                logging.info(f"Identified best move so far = {best_move} in "
+                             f"{round((time.time_ns() - clock_in2) / 1000000, 3)} ms")
 
-                logging.info(f"Updated BETA from {old_beta} to {beta}")
-                logging.info(
-                    f"Identified best move so far = {best_move} in {round((time.time_ns() - clock_in2) / 1000000, 3)} ms")
-
-                # Check to see if we can prune
+                # Check to see if we can prune the branch
                 if beta <= alpha:
-                    logging.info(f"PRUNED!!! Beta = {beta} <= Alpha = {alpha}")
+                    logging.info(f"PRUNED!!! alpha = {alpha} >= beta = {beta}")
                     break
 
             self.update_tree_graphic(depth=depth, update_best_edge=best_edge)
-            logging.info(f"FINISHED MINIMAX LAYER on opponents in {(time.time_ns() - clock_in) // 1000000} ms")
+            logging.info(f"Finished minimax layer on opponents in {(time.time_ns() - clock_in) // 1000000} ms")
             return best_score, best_move, best_node_data
 
     def optimal_move(self):
