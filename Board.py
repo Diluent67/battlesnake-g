@@ -271,10 +271,13 @@ class Board:
                     # Our snake's tail is off-limits since we will already have moved
                     if pos in opp_snake.body[1:]:
                         return False, True
-                    # Avoid losing head-to-head collisions with our snake, but suicidal collisions are fine if our snake
-                    # is the same length and also dies
-                    elif pos == opp_snake.head and length < opp_snake.length:
-                        return False, True
+                    # Avoid losing head-to-head collisions with our snake. Suicidal collisions (when our snake is the
+                    # same length) are risky, but technically still safe
+                    elif pos == opp_snake.head:
+                        if length < opp_snake.length:
+                            return False, True
+                        elif length == opp_snake.length:
+                            return True, True
                 else:
                     # Tail is fine against other opponents
                     if pos in opp_snake.body[:-1]:

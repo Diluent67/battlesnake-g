@@ -13,9 +13,6 @@ class Pos:
                 raise Exception("Pos constructor dict has no 'y' key")
             self.x = x["x"]
             self.y = x["y"]
-        elif isinstance(x, tuple):
-            self.x = x[0]
-            self.y = x[1]
         else:
             if y is None:
                 raise Exception("Pos constructor: no y value")

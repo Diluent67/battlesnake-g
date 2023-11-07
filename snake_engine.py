@@ -401,7 +401,7 @@ class Battlesnake:
             # If there's another trapped snake approaching us, see if we can reach the opening before a collision
             if collision_square is not None:
                 if (self.board.closest_dist(self.you.head, opening) <
-                        self.board.closest_dist(self.you.head, Pos(collision_square))):  # TODO make into a dict
+                        self.board.closest_dist(self.you.head, Pos(collision_square[0], collision_square[1]))):  # TODO make into a dict
                     trapped = True
             else:
                 trapped = longest_path_till_opening < moves_until_opening
@@ -778,7 +778,9 @@ class Battlesnake:
                     dist_from_you = self.board.closest_dist(self.you.head, opp_snake_head)
                     opp_length = (1 / (opp_snake.length + (1 if opp_snake_head in self.board.food else 0)))
                     opp_peripheral = self.board.flood_fill(opp_id, risk_averse=False, confined_area=move)
-                    opp_scores.append((opp_id, dist_from_you + opp_length + ((1 / opp_peripheral) if opp_peripheral >= 1 else 0)))
+                    # Assume the opponent won't just commit suicide
+                    opp_penalty = 100 if dist_from_you == 1 and opp_snake.length <= self.you.length else 0
+                    opp_scores.append((opp_id, dist_from_you + opp_length + opp_penalty + ((1 / opp_peripheral) if opp_peripheral >= 1 else 0)))
 
                 opp_moves = [x for _, x in sorted(zip([s[1] for s in opp_scores], opp_moves))]
                 opps_moves[opp_id] = opp_moves
