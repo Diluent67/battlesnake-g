@@ -6,7 +6,7 @@ import sys
 import time
 from collections import Counter
 from networkx_tree import hierarchy_pos
-from typing import Optional
+from typing import Any, Optional
 from Board import Board
 from Pos import Pos
 from Snake import Snake
@@ -117,7 +117,7 @@ class Battlesnake:
 
     def is_game_over(self, for_snake_id: Optional[str] = None, depth: Optional[int] = 4) -> tuple[bool, bool]:
         """
-        Determine if the game is over for our snake. Can optionally be used to determine whether an opponent snake is
+        Determine if the game is over for our snake. Can optionally be used to determine whether any opponent snake is
         dead or not.
 
         :param for_snake_id: The ID of the desired snake that we want to know died or not
@@ -246,7 +246,7 @@ class Battlesnake:
 
     def edge_kill_detection(self, snake_id, us_killing: Optional[bool] = False) -> bool:
         """
-        Determine if a snake is in a position where it can get edge-killed
+        Determine if a snake is in a position where it can get edge-killed. Assumes that trap_detection ran first.
 
         :param snake_id: The ID of the desired snake we want to detect a possible edge kill for
         :param us_killing: For cases where an opponent snake is inputted, and we want to see if we can edge-kill them
@@ -262,11 +262,11 @@ class Battlesnake:
         # A small database that covers different edge kill scenarios
         dir_dict = {
             "vertical": {
-                "bounds": [0, self.board.width],
-                "escape_dirs": ["left", "right"],
-                "axis": "x",
-                "axis_dir": "y",
-                "scan_dir": +1 if direction == "up" else -1
+                "bounds": [0, self.board.width],  # Dimensions of the board
+                "escape_dirs": ["left", "right"],  # We're getting edge-killed if we can't move in either direction
+                "axis": "x",  # The axis used to scan for edge kills (e.g. we should look left/right in the x-direction)
+                "axis_dir": "y",  # The axis we're moving along (e.g. vertical movement means going along the y-axis)
+                "scan_dir": +1 if direction == "up" else -1  # +1 if we're moving in the positive x-direction, else -1
             },
             "horizontal": {
                 "bounds": [0, self.board.height],
@@ -276,6 +276,7 @@ class Battlesnake:
                 "scan_dir": +1 if direction == "right" else -1
             },
         }
+        # Select the appropriate edge kill variables based on our snake's direction
         dir_data = dir_dict["horizontal"] if direction in ["left", "right"] else dir_dict["vertical"]
         bounds = dir_data["bounds"]
         escape_dirs = dir_data["escape_dirs"]
@@ -283,95 +284,90 @@ class Battlesnake:
         ax_dir = dir_data["axis_dir"]
         scan_dir = dir_data["scan_dir"]
 
-        # Determine if we can't escape (e.g. we're heading right, but can't move up or down)
+        # Determine if we can possibly get edge-killed via a longer snake in front of us, behind us, or two over from us
         board = self.board.board
         trapped_sides = [False, False]
         if len(set(escape_dirs).intersection(possible_moves)) == 0:
             # Scan the column/row to each side of us in ascending order
             for num, escape_dir in enumerate(escape_dirs):
                 look = -1 if num == 0 else +1
-                esc_attempt = getattr(snake.head, ax) + look
+                esc_move = getattr(snake.head, ax) + look
                 # Off-limits if it's outside the board
-                if bounds[0] <= esc_attempt < bounds[1]:
-                    # Look at the space in the column/row ahead of us
+                if bounds[0] <= esc_move < bounds[1]:
+                    # Check the space in the column/row ahead of us
                     if ax == "x":
-                        strip = board[esc_attempt, getattr(snake.head, ax_dir):] if scan_dir == +1 \
-                            else board[esc_attempt, :(getattr(snake.head, ax_dir) + 1)][::-1]
+                        strip = board[esc_move, getattr(snake.head, ax_dir):] if scan_dir == +1 \
+                            else board[esc_move, :(getattr(snake.head, ax_dir) + 1)][::-1]
                     else:
-                        strip = board[getattr(snake.head, ax_dir):, esc_attempt] if scan_dir == +1 \
-                            else board[:(getattr(snake.head, ax_dir) + 1), esc_attempt][::-1]
+                        strip = board[getattr(snake.head, ax_dir):, esc_move] if scan_dir == +1 \
+                            else board[:(getattr(snake.head, ax_dir) + 1), esc_move][::-1]
                     # If there's an opponent head in front of us, we might be getting edge-killed
                     if "H" in strip:
-                        # Focus on the portion preceded by an opponent head to determine if we're being edge-killed
+                        # Focus on the portion preceded by an opponent head
                         danger_strip = strip[:np.where(strip == "H")[0][0]]
-                        # Identify the possible killer
+                        # Identify the killer
                         if ax == "x":
-                            opp_loc = Pos(esc_attempt, getattr(snake.head.moved_to(direction, len(danger_strip)), ax_dir))
+                            opp_loc = Pos(esc_move, getattr(snake.head.moved_to(direction, len(danger_strip)), ax_dir))
                         else:
-                            opp_loc = Pos(getattr(snake.head.moved_to(direction, len(danger_strip)), ax_dir), esc_attempt)
+                            opp_loc = Pos(getattr(snake.head.moved_to(direction, len(danger_strip)), ax_dir), esc_move)
                         opp_killer = self.board.identify_snake(opp_loc)
-                        # Check if the opponent is bound to turn around and collide with us
+
+                        # Check if the opponent is bound to turn around and collide with us (not an edge kill)
                         opp_next_dirs = self.get_obvious_moves(opp_killer.id, risk_averse=False)
                         if len(opp_next_dirs) == 1 and sorted([opp_next_dirs[0], escape_dir]) == sorted(escape_dirs):
                             pass
-                        # Check if the opponent is going the same direction as us - it's not an edge kill yet if not
+                        # Check if the opponent is going the same direction as us (it's not an edge kill yet if not)
                         elif opp_killer.facing_direction() == direction:
-                            # Check if there's free space ahead of us before the killer, we're trapped if there's none
+                            # Check if there are gaps ahead of us before the killer, we're dead if there's none
                             if np.count_nonzero(danger_strip == " ") == 0:
                                 trapped_sides[num] = True
+                                break
                     else:
                         # If there's no opponent head, just check to see if there's free space for us to escape to
                         if np.count_nonzero(strip == " ") == 0 and self.trapped:
                             trapped_sides[num] = True
+                            break
 
-                    # Check if there's a snake behind us that can kill us
+                    # Check the space directly behind and to the side of us
                     if ax == "x":
-                        future_threat_pos = Pos(esc_attempt, getattr(snake.head, ax_dir) - 1) if scan_dir == +1 \
-                            else Pos(esc_attempt, getattr(snake.head, ax_dir) + 1)
+                        threat_behind = Pos(esc_move, getattr(snake.head, ax_dir) - 1) if scan_dir == +1 \
+                            else Pos(esc_move, getattr(snake.head, ax_dir) + 1)
                     else:
-                        future_threat_pos = Pos(getattr(snake.head, ax_dir) - 1, esc_attempt) if scan_dir == +1 \
-                            else Pos(getattr(snake.head, ax_dir) + 1, esc_attempt)
-                    future_threat_opp = [opp_snake.id for opp_snake in opponents if
-                                         opp_snake.head == future_threat_pos]
-                    if len(future_threat_opp) > 0:
-                        threat_id = future_threat_opp[0]
-                        if (self.all_snakes[threat_id].length > snake.length and
-                                direction in self.get_obvious_moves(threat_id)):
-                            trapped_sides[num] = True
-
-                    # Check if there's a snake two columns/rows over that can kill us
-                    esc_attempt_x2 = snake.head.as_dict()[ax] + (look * 2)
+                        threat_behind = Pos(getattr(snake.head, ax_dir) - 1, esc_move) if scan_dir == +1 \
+                            else Pos(getattr(snake.head, ax_dir) + 1, esc_move)
+                    # Also check if there's a snake two columns/rows over from us
+                    esc_move_x2 = snake.head.as_dict()[ax] + (look * 2)
                     if ax == "x":
-                        future_threat_pos = Pos(esc_attempt_x2, getattr(snake.head, ax_dir))
+                        threat_two_over = Pos(esc_move_x2, getattr(snake.head, ax_dir))
                     else:
-                        future_threat_pos = Pos(getattr(snake.head, ax_dir), esc_attempt_x2)
-                    future_threat_opp = [opp_snake.id for opp_snake in opponents if opp_snake.head == future_threat_pos]
-                    if len(future_threat_opp) > 0:
-                        threat_id = future_threat_opp[0]
-                        if (self.all_snakes[threat_id].length > snake.length and
-                                direction in self.get_obvious_moves(threat_id)):
-                            trapped_sides[num] = True
+                        threat_two_over = Pos(getattr(snake.head, ax_dir), esc_move_x2)
+                    # If there's a longer snake in either of those two locations, we might be getting edge-killed
+                    opp_killers = [opp.id for opp in opponents if opp.length > snake.length and (
+                                   (opp.head == threat_behind and direction in self.get_obvious_moves(opp.id)) or
+                                   (opp.head == threat_two_over))]
+                    if len(opp_killers) > 0:
+                        trapped_sides[num] = True
                 else:
                     trapped_sides[num] = True
+
         # If both sides of the snake are blocked in, then we're trapped
         return True if sum(trapped_sides) == 2 else False
 
-    def trap_detection(self, available_space):
+    def trap_detection(self) -> bool:
         """
         Determines if our snake is trapped based on the space it has left and possible escape routes
-
-        :param available_space: Our snake's flood fill (risk_averse=False)
 
         :return: True if our snake's trapped, False otherwise
         """
         trapped = False
-        # If we have 5 remaining squares to go to, determine if our space changed if all snakes' tails were removed by 5
+        # E.g. if we have 5 remaining squares to go to, determine if our space changed if all tails were set back by 5
         collision_square = None
         if self.board.space_all <= 15:
-            # Situations where we're trapped along with another snake
+            # Check if we're trapped along with another snake
             if len(self.board.touch_opps) > 0:
-                dist_to_trapped_opp, path_to_trapped_opp = self.board.dijkstra_shortest_dist(self.you.head, list(self.board.touch_opps)[0], get_path=True)
-                trapped_opp = self.board.identify_snake(list(self.board.touch_opps)[0])
+                dist_to_trapped_opp, path_to_trapped_opp = self.board.dijkstra_shortest_dist(
+                    self.you.head, self.board.touch_opps[0], get_path=True)
+                trapped_opp = self.board.identify_snake(self.board.touch_opps[0])
                 # We'll win the incoming collision if we're longer and colliding on the same square
                 trapped = not (dist_to_trapped_opp % 2 == 1 and self.you.length > trapped_opp.length)
                 collision_square = path_to_trapped_opp[len(path_to_trapped_opp) // 2] if trapped else None
@@ -380,11 +376,13 @@ class Battlesnake:
 
         # If space frees up after X moves, identify where the opening in our flood fill is
         openings_in_boundary = []
-        for move_num in range(1, round(available_space)):
+        moves_until_opening = None
+        for move_num in range(1, round(self.board.space_all)):
             found_opening = False
-            # Move all snakes' tails forward by one until we detect a hole in our flood fill boundary
+            # Simulate each snake's new position if its tail were moved forward by one
             for snake in self.all_snakes.values():
                 new_tail = snake.body[max(-snake.length + 1, -move_num)]
+                # Until we detect a hole in our flood fill boundary
                 if new_tail in self.board.ff_bounds:
                     openings_in_boundary.append(new_tail)
                     found_opening = True
@@ -392,20 +390,21 @@ class Battlesnake:
             if found_opening:
                 moves_until_opening = move_num
                 break
-
+        # We're not actually trapped if we can reach the opening in our flood fill before space runs out!
         if len(openings_in_boundary) > 0:
             # If there are multiple openings, select the one closest to our snake
             if len(openings_in_boundary) > 1:
                 openings_in_boundary = sorted(openings_in_boundary, key=lambda op: self.you.head.manhattan_dist(op))
-
+            # Find the longest path to reach the opening (in case we're running out of space and need to stall)
             opening = openings_in_boundary[0]
             longest_path_till_opening = self.board.stall_path(self.you.head, opening)
-            # We need to make sure we reach the opening before we run out of space
-            if collision_square is None:
-                trapped = longest_path_till_opening < moves_until_opening
-            else:
-                if self.board.closest_dist(self.you.head, opening) < self.board.closest_dist(self.you.head, Pos(collision_square)):
+            # If there's another trapped snake approaching us, see if we can reach the opening before a collision
+            if collision_square is not None:
+                if (self.board.closest_dist(self.you.head, opening) <
+                        self.board.closest_dist(self.you.head, Pos(collision_square))):  # TODO make into a dict
                     trapped = True
+            else:
+                trapped = longest_path_till_opening < moves_until_opening
 
         return trapped
 
@@ -436,7 +435,7 @@ class Battlesnake:
 
         # Are we trapped?
         if space_all <= 15:
-            trapped = self.trap_detection(space_all)
+            trapped = self.trap_detection()
             # Penalise entrapment (-1e7) more than getting killed by an opponent (-1e6)
             space_penalty = -1e7 if trapped and len(touch_opps) == 0 else 0
             self.trapped = trapped
@@ -459,8 +458,6 @@ class Battlesnake:
             [self.you.head.manhattan_dist(opp.head) for opp in self.opponents.values()])
         manhattan_flag = sum([dist <= 5 for dist in dist_from_enemies_manhattan]) >= 1
         if len(self.opponents) <= 3 or djikstra_flag or manhattan_flag:
-            # and sum([dist < (self.board.width // 2) for dist in self.dist_from_enemies()]) <= 3 \
-            # and len(self.opponents) == sum([self.you.length > s["length"] for s in self.opponents.values()]):
             self.peripheral_size = 4
             if djikstra_flag:
                 closest_enemy = sorted(self.opponents.keys(), key=lambda opp_id: self.board.closest_dist(self.you.head,
@@ -539,7 +536,8 @@ class Battlesnake:
             connection = self.all_snakes[closest_enemy].head.direction_to(self.you.head)
             # This means they're headed towards us
             if self.all_snakes[closest_enemy].facing_direction() in connection:
-                if sum([esc in me for esc in connection]) != len(connection):
+                # If we have no choice but to head towards the opponent as well  (e.g. if the enemy is heading up and left, we have no choice but to move down or right)
+                if sum([esc in me for esc in connection]) == 0:
                     collision_inbound = True
         if collision_inbound:
             danger_penalty = -15 * diff_lengths
@@ -637,115 +635,119 @@ class Battlesnake:
             aggression_weight / (dist_to_enemy + 1) + cutoff_bonus + \
             (enemy_restriction_weight / (available_enemy_space + 1)) + kill_bonus
 
-        return h, {"Heur": round(h, 2),
-                   "Space": space_ra,
-                   "Penalty": space_penalty,
+        return h, {"Score": round(h, 2),
+                   "Space|Pen": f"{space_ra},{space_penalty}",
                    "Periph": peripheral,
                    "Food Dist": dist_food,
-                   "Enemy Dist": dist_to_enemy,
-                   "Enemy Kill": available_enemy_space + kill_bonus,
+                   "Opp Dist|Len": f"{dist_to_enemy},{opponent_lengths}",
+                   "Opp Space|Kill": f"{available_enemy_space},{kill_bonus}",
                    "Threats": num_threats,
                    "Length": self.you.length}
 
-    def minimax(self, depth, alpha, beta, maximising_snake):
+    def minimax(self, depth: int, alpha: float, beta: float, maximising_snake: bool) -> tuple[float, Any, dict]:
         """
-        Implement the minimax algorithm with alpha-beta pruning
+        Implement the minimax algorithm with alpha-beta pruning!
 
-        :param depth:
-        :param alpha:
-        :param beta:
-        :param maximising_snake:
+        :param depth: The current depth in the minimax search tree
+        :param alpha: The best value for our maximising snake (us)
+        :param beta: The best value for our minimising snakes (opponents)
+        :param maximising_snake: If True, it's our snake's turn and the minimax algorithm wants to maximise the score.
+            If False, it's the opponents' turn and the algorithm wants to minimise the score. When we're minimising,
+            we prune the branch if alpha >= beta, and vice-versa when we're maximising.
 
         :return:
+            The best heuristic score for the node
+            The best move associated with the best heuristic for the node
+            A dictionary compiling select metrics to construct an informative tree visualisation for debugging
         """
+        # If we're not at the bottom of the search tree, check if our snake died
         if depth != self.minimax_search_depth:
-            # Check if our snake died
-            game_over, still_alive = self.is_game_over(for_snake_id=self.you.id, depth=depth)
-            if not still_alive:
+            game_over, alive = self.is_game_over(depth=depth)
+            if not alive:
                 logging.info("Our snake died...")
-                killer_snake = sorted([opp for opp in self.opponents.values() if opp.head == self.you.head], key=lambda op: op.length)
-                killer_penalty = killer_snake[0].length if len(killer_snake) > 0 else 0
-                # How likely is the killer going to deliver the coup de grâce? E.g. if he'd rather get food
-                likelihood_kill = self.board.dist_to_nearest_food(killer_snake[0].id)[0] if len(killer_snake) > 0 else 0
-                distraction = likelihood_kill if likelihood_kill <= 4 else 0
-                heuristic = -1e6 + (self.minimax_search_depth - depth) - killer_penalty + distraction * 2  # Reward slower deaths and penalise worse killers
-                return heuristic, None, {"Heur": heuristic}
-            # Otherwise, if our snake is ALIVE and is the winner :)
+                # Check if we got killed by an enemy snake
+                possible_killers = [opp for opp in self.opponents.values() if opp.head == self.you.head]
+                killer_penalty = 0
+                if len(possible_killers) > 0:
+                    killer = sorted(possible_killers, key=lambda op: op.length, reverse=True)[0]
+                    # We'd prefer to get killed by a smaller snake in case we're the same length and can kill them too
+                    killer_length = killer.length
+                    # How likely is the killer going to deliver the coup de grâce? E.g. he could get distracted by food
+                    distraction = self.board.dist_to_nearest_food(killer.id)[0]
+                    # Add a killer penalty score to give higher weight to more advantageous deaths
+                    killer_penalty = -killer_length + (distraction if distraction <= 4 else 0)
+                heuristic = -1e6 + (self.minimax_search_depth - depth) + killer_penalty  # Reward slower deaths
+                return heuristic, None, {"Score": heuristic}
+
+            # If our snake is the winner :)
             elif game_over:
-                logging.info("OUR SNAKE WON")
+                logging.info("Our snake won!!")
                 heuristic = 1e6 + depth  # Reward faster kills
-                return heuristic, None, heuristic
+                return heuristic, None, {"Score": heuristic}
 
-        # At the bottom of the decision tree or if we won/lost the game
+        # If we're at the bottom of the decision tree
         if depth == 0:
-            logging.info("=" * 50)
+            logging.info("=" * 75)
             logging.info(f"DEPTH = {depth}")
-            heuristic, heuristic_data = self.heuristic(tree_depth=depth)
-            logging.info(f"Heuristic = {heuristic} at terminal node")
-            return heuristic, None, heuristic_data
+            score, score_metrics = self.heuristic(tree_depth=depth)
+            logging.info(f"Heuristic = {score} at terminal node")
+            return score, None, score_metrics
 
-        global tree_edges
-        # Minimax on our snake
-        if maximising_snake:
-            logging.info("=" * 50)
+        if maximising_snake:  # Our turn
+            logging.info("=" * 75)
             logging.info(f"DEPTH = {depth} OUR SNAKE")
             logging.info(f"alpha = {alpha} | beta = {beta}")
 
             clock_in = time.time_ns()
-            possible_moves = self.get_obvious_moves(  # If > 6 opponents, we'll do depth = 2 and risk_averse = True
-                self.you.id, risk_averse=(len(self.opponents) > 6), sort_by_peripheral=True)
-            if len(possible_moves) == 0 and len(self.opponents) > 6:  # Try again, but do any risky move
-                possible_moves = self.get_obvious_moves(self.you.id, risk_averse=False, sort_by_peripheral=True)
-            if len(possible_moves) == 0:  # RIP
+            # Determine our snake's possible moves, sorted by the amount of immediate space it'd give us
+            possible_moves = self.get_obvious_moves(self.you.id, risk_averse=False, sort_by_peripheral=True)
+            if len(possible_moves) == 0:  # RIP we're going to die
                 possible_moves = ["down"]
-            logging.info(f"Possible moves: {possible_moves}")
+            logging.info(f"Our possible moves: {possible_moves}")
 
-            best_val, best_move = -np.inf, None
-            best_node_data, best_edge = None, None
+            # Initialise variables to store information on the best detected move
+            best_score, best_move, best_node_data, best_edge = -np.inf, None, None, None
+            # Each child node will be a new board simulating a possible move
             for num, move in enumerate(possible_moves):
-                SIMULATED_BOARD_INSTANCE = self.simulate_move({self.you.id: move})
-
+                simulation = self.simulate_move({self.you.id: move})
                 logging.info(f"Visiting {num + 1} of {len(possible_moves)} child nodes: {move}")
                 if self.debugging:
-                    logging.info(SIMULATED_BOARD_INSTANCE.board.display(show=False))
-                    logging.info(SIMULATED_BOARD_INSTANCE.dict)
+                    logging.info(simulation.board.display(show=False))
+                    logging.info(simulation.dict)
 
+                # Add the move to the minimax tree plot as a node and create an edge to its parent node
+                edge_added = self.update_tree_graphic(add_edges=True, depth=depth - 1)
+                node_added = self.update_tree_graphic(add_nodes=True, depth=depth - 1, node_data=move)
+                # Run minimax on the new simulated board
                 clock_in2 = time.time_ns()
-                edge_added = self.update_tree_visualisation(add_edges=True, depth=depth - 1)
-                node_added = self.update_tree_visualisation(add_nodes=True, depth=depth - 1, node_data=move)
-                node_val, node_move, node_data = SIMULATED_BOARD_INSTANCE.minimax(depth - 1, alpha, beta, False)
-                self.update_tree_visualisation(add_nodes=True, depth=depth - 1, node_data=node_data,
-                                               insert_index=node_added)
+                node_score, node_move, node_data = simulation.minimax(depth - 1, alpha, beta, False)
+                # Update the node we just added with text to display some heuristic information for debugging
+                self.update_tree_graphic(add_nodes=True, depth=depth - 1, node_data=node_data, insert_at=node_added)
 
-                logging.info("=" * 50)
-                logging.info(f"BACK AT DEPTH = {depth} OUR SNAKE")
+                logging.info("=" * 75)
+                logging.info(f"Back at DEPTH = {depth} OUR SNAKE")
                 logging.info(f"alpha = {alpha} | beta = {beta}")
 
-                # Update best score and best move
-                if np.argmax([best_val, node_val]) == 1:
-                    best_move = move
-                    best_node_data, best_edge = node_data, edge_added
-                best_val = max(best_val, node_val)
-                old_alpha = alpha
-                alpha = max(alpha, best_val)
+                # If we found a better score with a different move, update the best move and best edge
+                if np.argmax([best_score, node_score]) == 1:
+                    best_move, best_node_data, best_edge = move, node_data, edge_added
+                best_score = max(best_score, node_score)
+                old_alpha, alpha = alpha, max(alpha, best_score)
+                logging.info(f"Updated alpha from {old_alpha} to {alpha}")
+                logging.info(f"Identified best move so far = {best_move} in "
+                             f"{round((time.time_ns() - clock_in2) / 1000000, 3)} ms")
 
-                logging.info(f"Updated ALPHA from {old_alpha} to {alpha}")
-                logging.info(
-                    f"Identified best move so far = {best_move} in {round((time.time_ns() - clock_in2) / 1000000, 3)} ms")
-
-                # Check to see if we can prune
+                # Check to see if we can prune the branch
                 if alpha >= beta:
-                    logging.info(f"PRUNED!!! Alpha = {alpha} >= Beta = {beta}")
+                    logging.info(f"PRUNED!!! alpha = {alpha} >= beta = {beta}")
                     break
 
-            tree_edges[best_edge][2]["colour"] = "r"
-            tree_edges[best_edge][2]["width"] = 4
-            logging.info(f"FINISHED MINIMAX LAYER on our snake in {round((time.time_ns() - clock_in) / 1000000, 3)} ms")
-            return best_val, best_move, best_node_data
+            self.update_tree_graphic(depth=depth, update_best_edge=best_edge)
+            logging.info(f"Finished minimax layer on our snake in {round((time.time_ns() - clock_in) / 1000000, 3)} ms")
+            return best_score, best_move, best_node_data
 
-        # Minimax on opponent snakes
-        else:
-            logging.info("=" * 50)
+        else:  # Opponents' turn
+            logging.info("=" * 75)
             logging.info(f"DEPTH = {depth} OPPONENT SNAKES")
             logging.info(f"alpha = {alpha} | beta = {beta}")
 
@@ -828,32 +830,31 @@ class Battlesnake:
                          f"{round((time.time_ns() - clock_in) / 1000000, 3)} ms")
 
             clock_in = time.time_ns()
-            best_val, best_move = np.inf, None
-            best_node_data, best_edge = None, None
+            best_score, best_move, best_node_data, best_edge = np.inf, None, None, None
             for num, SIMULATED_BOARD_INSTANCE in enumerate(possible_sims):
                 logging.info(f"Visiting {num + 1} of {len(possible_sims)} child nodes: {possible_movesets[num]}")
                 if self.debugging:
                     logging.info(SIMULATED_BOARD_INSTANCE.board.display(show=False))
                     logging.info(SIMULATED_BOARD_INSTANCE.dict)
                 clock_in2 = time.time_ns()
-                edge_added = self.update_tree_visualisation(add_edges=True, depth=depth - 1)
-                node_added = self.update_tree_visualisation(add_nodes=True, depth=depth - 1,
+                edge_added = self.update_tree_graphic(add_edges=True, depth=depth - 1)
+                node_added = self.update_tree_graphic(add_nodes=True, depth=depth - 1,
                                                             node_data=str(possible_movesets[num]))
-                node_val, node_move, node_data = SIMULATED_BOARD_INSTANCE.minimax(depth - 1, alpha, beta, True)
-                self.update_tree_visualisation(add_nodes=True, depth=depth - 1, node_data=node_data,
-                                               insert_index=node_added)
+                node_score, node_move, node_data = SIMULATED_BOARD_INSTANCE.minimax(depth - 1, alpha, beta, True)
+                self.update_tree_graphic(add_nodes=True, depth=depth - 1, node_data=node_data,
+                                               insert_at=node_added)
 
-                logging.info("=" * 50)
+                logging.info("=" * 75)
                 logging.info(f"BACK AT DEPTH = {depth} OPPONENT SNAKES")
                 logging.info(f"alpha = {alpha} | beta = {beta}")
 
                 # Update best score and best move
-                if np.argmin([best_val, node_val]) == 1:
+                if np.argmin([best_score, node_score]) == 1:
                     best_move = possible_movesets[num]
                     best_node_data, best_edge = node_data, edge_added
-                best_val = min(best_val, node_val)
+                best_score = min(best_score, node_score)
                 old_beta = beta
-                beta = min(beta, best_val)
+                beta = min(beta, best_score)
 
                 logging.info(f"Updated BETA from {old_beta} to {beta}")
                 logging.info(
@@ -864,15 +865,14 @@ class Battlesnake:
                     logging.info(f"PRUNED!!! Beta = {beta} <= Alpha = {alpha}")
                     break
 
-            tree_edges[best_edge][2]["colour"] = "r"
-            tree_edges[best_edge][2]["width"] = 4
+            self.update_tree_graphic(depth=depth, update_best_edge=best_edge)
             logging.info(f"FINISHED MINIMAX LAYER on opponents in {(time.time_ns() - clock_in) // 1000000} ms")
-            return best_val, best_move, best_node_data
+            return best_score, best_move, best_node_data
 
     def optimal_move(self):
         """Let's run the minimax algorithm with alpha-beta pruning!"""
         if self.turn <= 3:
-            depth = 2
+            depth = 3
         else:
             depth = self.minimax_search_depth
 
@@ -905,26 +905,34 @@ class Battlesnake:
 
         return best_move
 
-    @staticmethod
-    def update_tree_visualisation(depth, add_edges=False, add_nodes=False, node_data=None, insert_index=None):
+    def update_tree_graphic(self, depth, add_edges=False, add_nodes=False, node_data=None, insert_at=None, update_best_edge=None):
+        if not self.debugging:
+            return None
+
         global tree_node_counter
         global tree_tracker
+        global tree_edges
+        global tree_nodes
+
+        if update_best_edge is not None:
+            tree_edges[update_best_edge][2]["colour"] = "r"
+            tree_edges[update_best_edge][2]["width"] = 4
+
         if add_edges:
             # Add the node that we'll be creating the edge to
             tree_tracker[depth].append(tree_node_counter)
             # Tuple of (node_1, node_2, node_attributes) where the edge is created between node_1 and node_2
-            global tree_edges
             tree_edges.append((tree_tracker[depth + 1][-1], tree_tracker[depth][-1], {"colour": "k", "width": 1}))
             # Now we're going to be on the next node
             tree_node_counter += 1
             return len(tree_edges) - 1
 
         if add_nodes:
-            global tree_nodes
-            if insert_index is not None:
-                node_move = tree_nodes[insert_index][1]
+
+            if insert_at is not None:
+                node_move = tree_nodes[insert_at][1]
                 formatted_dict = str(node_data).replace(", ", "\n").replace("{", "").replace("}", "").replace("'", "")
-                tree_nodes[insert_index] = (tree_tracker[depth][-1], node_move + "\n" + formatted_dict)
+                tree_nodes[insert_at] = (tree_tracker[depth][-1], node_move + "\n" + formatted_dict)
             else:
                 tree_nodes.append((tree_tracker[depth][-1], str(node_data).replace("'", "")))
             return len(tree_nodes) - 1

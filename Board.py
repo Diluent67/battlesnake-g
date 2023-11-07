@@ -415,7 +415,7 @@ class Board:
             self.space_ra = flood_fill
             self.space_all = flood_fill_all
             self.ff_bounds = set(boundary_pos)
-            self.touch_opps = set(heads_in_contact)
+            self.touch_opps = list(set(heads_in_contact))
             return flood_fill, flood_fill_all, set(boundary_pos), set(heads_in_contact)
         else:
             return flood_fill
