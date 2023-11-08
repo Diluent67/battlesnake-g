@@ -420,19 +420,54 @@ class Battlesnake:
             A dictionary of select metrics to be used for debugging
         """
         # How many layers deep in the game tree are we? (Reward longevity)
-        layers_deep = self.minimax_search_depth - tree_depth
+        current_depth = self.minimax_search_depth - tree_depth
+        current_depth_weight = 25
 
         # Did any opponent snakes die or increase in length?
-        opponent_lengths = sum([opp.length for opp in self.opponents.values()])
+        tot_opp_length = sum([opp.length for opp in self.opponents.values()])
+        tot_opp_length_weight = 1000
 
-        # How much space do we have? Run flood fill for the entire board once to save time
+        # How much space do we have?
         space_ra, space_all, ff_bounds, touch_opps = self.board.flood_fill(self.you.id, full_package=True)
-        if space_all < 4:
+        space_ra_weight = 1
+
+        # How much space do we have in our peripheral?
+        peripheral_ra = self.board.flood_fill(self.you.id, risk_averse=True, confined_area="auto")
+        peripheral_all = self.board.flood_fill(self.you.id, risk_averse=False, confined_area="auto")
+        peripheral_all_weight = 2
+
+        # _, _, _, _= self.board.flood_fill(self.you.id, confined_area="auto", full_package=True)
+        
+        # How cramped on space are we? 
+        space_penalty = 0
+        if space_all <= 3:
             space_penalty = -500
-        elif space_ra < 4:
+        elif space_ra <= 3:
             space_penalty = -250
+
+        # Are we trapped? (With no incoming opponents trapped with us)
+        if space_all <= 15:
+            self.trapped = self.trap_detection()
+            # Penalise entrapment (-1e7) more than getting killed by an opponent (-1e6)
+            space_penalty = -1e7 if self.trapped and len(touch_opps) == 0 else 0
         else:
-            space_penalty = 0
+            self.trapped = False
+
+        # Are we in danger of getting edge-killed?
+        edge_killed = self.edge_kill_detection(self.you.id)
+        space_penalty = -1e7 if edge_killed else space_penalty
+
+        # Determine the closest safe distance to food
+        dist_food, best_food = self.board.dist_to_nearest_food(self.you.id)
+        if best_food is not None:
+            logging.info(f"Closest distance to food = {dist_food, best_food.as_dict()}")
+        low_health_flag = True if self.you.health < 40 else False
+        shortest_flag = True if sum([self.you.length <= snake.length for snake in self.opponents.values()]) >= min(
+            [2, len(self.opponents)]) else False
+        longest_flag = True if sum([self.you.length > snake.length for snake in self.opponents.values()]) == len(
+            self.opponents) else False
+        food_weight = 250 if low_health_flag else 200 if shortest_flag else 25 if longest_flag else 300 / dist_food if dist_food <= 3 else 50
+            
 
         # Are we in the centre of the board? Maximise control
         centre = range(self.board.width // 2 - 2, self.board.width // 2 + 3)
@@ -441,22 +476,11 @@ class Battlesnake:
         # Are we on the edge? Try to stay away if possible
         on_edge = self.you.head.x in [0, self.board.width - 1] or self.you.head.y in [0, self.board.height - 1]
 
-        # Are we trapped?
-        if space_all <= 15:
-            trapped = self.trap_detection()
-            # Penalise entrapment (-1e7) more than getting killed by an opponent (-1e6)
-            space_penalty = -1e7 if trapped and len(touch_opps) == 0 else 0
-            self.trapped = trapped
-        else:
-            self.trapped = False
+        
 
-        # Are we in danger of getting edge-killed?
-        edge_killed = self.edge_kill_detection(self.you.id)
-        space_penalty = -1e7 if edge_killed else space_penalty
 
-        # How much space do we have in our peripheral?
-        peripheral = self.board.flood_fill(self.you.id, risk_averse=False, confined_area="auto")
-        peripheral_ra = self.board.flood_fill(self.you.id, risk_averse=True, confined_area="auto")
+
+        
 
         # We want to minimise available space for our opponents via flood fill (but only when there are fewer snakes in
         # our vicinity)
@@ -495,7 +519,7 @@ class Battlesnake:
 
                 elif available_enemy_space < 4:
                     kill_bonus = 1000
-                elif available_enemy_space_full <= 15 and space_ra > available_enemy_space_full:  # Yay but only if we're not gonna be doo-doo
+                elif available_enemy_space_full <= 15 and space_ra > available_enemy_space_full + 2:  # Yay but only if we're not gonna be doo-doo
                     kill_bonus = 750
                 elif available_enemy_space < self.opponents[closest_enemy].length / 2.75:  # Used to be 4
                     kill_bonus = 500
@@ -586,42 +610,37 @@ class Battlesnake:
 
 
         # Can we get cut off?
-        if len(self.opponents) == 1 and self.you.length < closest_opp.length:
+        if len(self.opponents) == 1:
+            us_cutoff = self.board.flood_fill(closest_opp.id, cutoff=self.you.id)
             opp_cutoff = self.board.flood_fill(self.you.id, cutoff=closest_opp.id)
-            if opp_cutoff <= 15:
-                if space_penalty == 0:
-                    space_penalty = -500
+            if self.you.length < closest_opp.length:
+                if opp_cutoff <= 15:
+                    if space_penalty == 0:
+                        space_penalty = -500
+            else:
+                if opp_cutoff <= 15 and us_cutoff > opp_cutoff:  # We hsould be in the better position
+                    if space_penalty == 0:
+                        space_penalty = -500
 
-        # Determine the closest safe distance to food
-        dist_food, best_food = self.board.dist_to_nearest_food(self.you.id)
-        if best_food is not None:
-            logging.info(f"Closest distance to food = {dist_food, best_food.as_dict()}")
-        health_flag = True if self.you.health < 40 else False
-        shortest_flag = True if sum([self.you.length <= snake.length for snake in self.opponents.values()]) >= min(
-            [2, len(self.opponents)]) else False
-        longest_flag = True if sum([self.you.length > snake.length for snake in self.opponents.values()]) == len(
-            self.opponents) else False
+
 
 
 
         # Heuristic formula
-        depth_weight = 25
-        enemy_left_weight = 8 * 100000   #TODO test higher values
-        enemy_length_weight = 1000
 
-        space_weight = 1
-        peripheral_weight = 2
+        enemy_left_weight = 8 * 100000   #TODO test higher values
+
         enemy_restriction_weight = 0 if available_enemy_space == -2 else 75 if len(self.opponents) > 2 else 200
         if self.trapped or edge_killed:
             enemy_restriction_weight = 0
-        food_weight = 250 if health_flag else 200 if shortest_flag else 25 if longest_flag else 300/dist_food if dist_food <= 3 else 50
+
 
         if kill_bonus > 0:
             food_weight = 10
-            peripheral_weight = 0.5
+            peripheral_all_weight = 0.5
         # Get more aggressive if we're longer and there's only one snake left!
         if len(self.opponents) == 1 and longest_flag:
-            peripheral_weight = 0.5
+            peripheral_all_weight = 0.5
 
 
         length_weight = 1250
@@ -629,43 +648,43 @@ class Battlesnake:
         threat_proximity_weight = -25
 
         if len(threats) == 0 and kill_bonus == 0 and cutoff_bonus == 0 and not longest_flag:  # We're chilling tbh but need FOOD
-        #     peripheral_weight = 0.5
+        #     peripheral_all_weight = 0.5
             food_weight = 350
 
         logging.info(f"Available space: {space_ra}")
         logging.info(f"Space penalty: {space_penalty}")
-        logging.info(f"Available peripheral: {peripheral}")
-        logging.info(f"Enemy length total: {opponent_lengths}")
+        logging.info(f"Available peripheral: {peripheral_all}")
+        logging.info(f"Enemy length total: {tot_opp_length}")
         logging.info(f"Threats within 3 squares of us: {num_threats}")
         logging.info(f"Incoming collision penalty: {danger_penalty}")
         logging.info(f"Distance to nearest enemy: {dist_to_enemy}")
         logging.info(f"Actual dist: {self.board.closest_dist(self.you.head, self.all_snakes[closest_enemy].head)  }")
         logging.info(f"Distance to nearest food: {dist_food}")
-        logging.info(f"Layers deep in search tree: {layers_deep}")
+        logging.info(f"Layers deep in search tree: {current_depth}")
         logging.info(f"Available enemy space: {available_enemy_space}")
         logging.info(f"Cutoff bonus: {cutoff_bonus}")
         logging.info(f"Kill bonus: {kill_bonus}")
         logging.info(f"In centre: {in_centre}; On edge: {on_edge}")
         logging.info(f"Length: {self.you.length}")
 
-        h = (space_ra * space_weight) + space_penalty + \
-            (peripheral_weight * peripheral) + \
-            (enemy_length_weight / (opponent_lengths + 1)) + \
+        h = (space_ra * space_ra_weight) + space_penalty + \
+            (peripheral_all_weight * peripheral_all) + \
+            (tot_opp_length_weight / (tot_opp_length + 1)) + \
             (threat_proximity_weight * num_threats) + danger_penalty + \
             (food_weight / (dist_food + 1)) + \
-            (layers_deep * depth_weight) + \
+            (current_depth * current_depth_weight) + \
             (self.you.length * length_weight) + \
             in_centre * centre_control_weight + \
             on_edge * -centre_control_weight + \
             aggression_weight / (dist_to_enemy + 1) + cutoff_bonus + \
             (enemy_restriction_weight / (available_enemy_space + 1)) + kill_bonus
 
-        # print((space_ra * space_weight) + space_penalty)
-        # print(peripheral_weight * peripheral)
-        # print(enemy_length_weight / (opponent_lengths + 1))
+        # print((space_ra * space_ra_weight) + space_penalty)
+        # print(peripheral_all_weight * peripheral_all)
+        # print(tot_opp_length_weight / (tot_opp_length + 1))
         # print((threat_proximity_weight * num_threats) + danger_penalty)
         # print(food_weight / (dist_food + 1))
-        # print(layers_deep * depth_weight)
+        # print(current_depth * current_depth_weight)
         # print((self.you.length * length_weight))
         # print(in_centre * centre_control_weight)
         # print(on_edge * -centre_control_weight)
@@ -674,10 +693,10 @@ class Battlesnake:
 
         return h, {"Score": round(h, 2),
                    "Space|Pen": f"{space_ra},{space_penalty}",
-                   "Periph": peripheral,
+                   "Periph": peripheral_all,
                    "Food Dist": dist_food,
                    "Danger": f"{danger_penalty},{collision_inbound}",
-                   "Opp Dist|Len": f"{dist_to_enemy},{opponent_lengths}",
+                   "Opp Dist|Len": f"{dist_to_enemy},{tot_opp_length}",
                    "Opp Space|Kill": f"{available_enemy_space},{kill_bonus}",
                    "Threats": num_threats,
                    "Length": self.you.length}

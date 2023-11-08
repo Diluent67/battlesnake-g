@@ -19,7 +19,6 @@ class Board:
         self.width = board_dict["width"]
         self.height = board_dict["height"]
         self.food = [Pos(xy) for xy in board_dict["food"]]
-        print(board_dict["hazards"])
         self.hazards = [Pos(xy) for xy in board_dict["hazards"]]
         if all_snakes is None:
             all_snakes: dict[str, Snake] = {}
@@ -30,6 +29,16 @@ class Board:
         self.graph = nx.grid_2d_graph(self.width, self.height)
         self.obstacles = ["H"] + [str(num) for num in range(0, 9)] + ["x", "?"]
         self.update_board()
+
+
+    def as_dict(self):
+        d = dict()
+        d["width"] = self.width
+        d["height"] = self.height
+        d["hazards"] = [pos.as_dict() for pos in self.hazards]
+        d["food"] = [pos.as_dict() for pos in self.food]
+        d["snakes"] = [snake.as_dict() for snake in self.all_snakes.values()]
+        return d
 
     def update_board(self):
         """
@@ -53,7 +62,7 @@ class Board:
                 if not (snake_num == 0 and num == 0):
                     self.graph.remove_nodes_from([pos.as_tuple()])
 
-    def display(self, board: Optional[np.array] = None, show: Optional[bool] = True):
+    def display(self, board: Optional[np.array] = None, show: Optional[bool] = True) -> str:
         """
         Convert the board into a nicely formatted string for convenient debugging e.g.
 
@@ -70,9 +79,12 @@ class Board:
         0	  |  |  |  | 1| 1| 1| 1| 1| 1| 1|
 
              0  1  2  3  4  5  6  7  8  9  10
+
+        :param board: Calling display() will print out the current board, but for debugging purposes, you can feed in a
+            different board variable to display
+        :param show: The function normally returns a string, but can optionally print it automatically if True
         """
         board = self.board if board is None else board
-
         board_str = ""
         for j in range(1, len(board[0]) + 1):
             display_row = f"{self.height - j}\t "
@@ -88,19 +100,11 @@ class Board:
             print(board_str)
         return board_str
 
-    def as_dict(self):
-        d = dict()
-        d["width"] = self.width
-        d["height"] = self.height
-        d["hazards"] = [ pos.as_dict() for pos in self.hazards ]
-        d["food"] = [ pos.as_dict() for pos in self.food ]
-        d["snakes"] = [ snake.as_dict() for snake in self.all_snakes.values() ]
-        return d
-
     def identify_snake(self, pos: Pos) -> Snake:
+        """Given any position on the board, return the Snake lying on top of it"""
         matched = [snake for snake in self.all_snakes.values() if pos in snake.body]
         if len(matched) > 1:
-            raise Exception("Interesting edge case where two snakes are at the same position...")
+            raise Exception("Interesting edge case where two snakes are at the same position...")  # TODO idk tbh
         return matched[0]
 
     def closest_dist(self, start: Pos, end: Pos) -> int:

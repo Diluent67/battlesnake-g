@@ -211,6 +211,11 @@ def test_entrapment():
     # next_move = Battlesnake(game_state).optimal_move()
     # assert next_move in ["left"]
 
+    # Realise you're getting trapped
+    game_state = {"game":{"id":"4ab5c3be-b5e7-4b5d-8eb2-85ef92fa26e3","ruleset":{"name":"standard","version":"cli","settings":{"foodSpawnChance":15,"minimumFood":1,"hazardDamagePerTurn":14,"hazardMap":"","hazardMapAuthor":"","royale":{"shrinkEveryNTurns":25},"squad":{"allowBodyCollisions":False,"sharedElimination":False,"sharedHealth":False,"sharedLength":False}}},"map":"standard","timeout":500,"source":""},"turn":195,"board":{"height":11,"width":11,"snakes":[{"id":"b65338d4-f053-4db2-aaad-6f6dedb5a63d","name":"Rick2","latency":"107","health":88,"body":[{"x":9,"y":4},{"x":9,"y":5},{"x":8,"y":5},{"x":8,"y":6},{"x":8,"y":7},{"x":8,"y":8},{"x":7,"y":8},{"x":7,"y":9},{"x":7,"y":10},{"x":6,"y":10},{"x":5,"y":10},{"x":4,"y":10},{"x":3,"y":10},{"x":2,"y":10},{"x":1,"y":10},{"x":0,"y":10},{"x":0,"y":9},{"x":1,"y":9},{"x":1,"y":8}],"head":{"x":9,"y":4},"length":19,"shout":"","squad":"","customizations":{"color":"#00ff00","head":"shark","tail":"coffee"}},{"id":"9e9cd890-66e3-47ce-8c3f-50180c940740","name":"Nightwing","latency":"192","health":99,"body":[{"x":3,"y":0},{"x":3,"y":1},{"x":4,"y":1},{"x":5,"y":1},{"x":6,"y":1},{"x":7,"y":1},{"x":8,"y":1},{"x":8,"y":2},{"x":7,"y":2},{"x":7,"y":3},{"x":7,"y":4},{"x":7,"y":5},{"x":6,"y":5},{"x":5,"y":5},{"x":4,"y":5},{"x":4,"y":6},{"x":4,"y":7},{"x":3,"y":7},{"x":2,"y":7},{"x":2,"y":6},{"x":3,"y":6},{"x":3,"y":5}],"head":{"x":3,"y":0},"length":22,"shout":"","squad":"","customizations":{"color":"#3333ff","head":"ski","tail":"mystic-moon"}}],"food":[{"x":9,"y":3}],"hazards":[]},"you":{"id":"9e9cd890-66e3-47ce-8c3f-50180c940740","name":"Nightwing","latency":"192","health":99,"body":[{"x":3,"y":0},{"x":3,"y":1},{"x":4,"y":1},{"x":5,"y":1},{"x":6,"y":1},{"x":7,"y":1},{"x":8,"y":1},{"x":8,"y":2},{"x":7,"y":2},{"x":7,"y":3},{"x":7,"y":4},{"x":7,"y":5},{"x":6,"y":5},{"x":5,"y":5},{"x":4,"y":5},{"x":4,"y":6},{"x":4,"y":7},{"x":3,"y":7},{"x":2,"y":7},{"x":2,"y":6},{"x":3,"y":6},{"x":3,"y":5}],"head":{"x":3,"y":0},"length":22,"shout":"","squad":"","customizations":{"color":"#3333ff","head":"ski","tail":"mystic-moon"}}}
+    next_move = Battlesnake(game_state).optimal_move()
+    assert next_move in ["left"]
+
 
 def test_stall():
     # Properly stall out
