@@ -62,7 +62,12 @@ class Board:
                 if not (snake_num == 0 and num == 0):
                     self.graph.remove_nodes_from([pos.as_tuple()])
 
-    def display(self, board: Optional[np.array] = None, show: Optional[bool] = True) -> str:
+    def display(
+            self,
+            board: Optional[np.array] = None,
+            show: Optional[bool] = True,
+            add_lengths: Optional[bool] = True
+    ) -> str:
         """
         Convert the board into a nicely formatted string for convenient debugging e.g.
 
@@ -83,6 +88,7 @@ class Board:
         :param board: Calling display() will print out the current board, but for debugging purposes, you can feed in a
             different board variable to display
         :param show: The function normally returns a string, but can optionally print it automatically if True
+        :param add_lengths: Adds a column of information showing all snake lengths
         """
         board = self.board if board is None else board
         board_str = ""
@@ -91,20 +97,25 @@ class Board:
             for i in range(0, len(board)):
                 display_row += f"{board[i][-j]}| "
             # Add snake length information
-            if j <= len(self.all_snakes):
-                jth_snake = list(self.all_snakes.values())[j - 1]
-                display_row += f"\t\t\tSnake {j - 1}: {jth_snake.length}"
+            if add_lengths:
+                if j <= len(self.all_snakes):
+                    jth_snake = list(self.all_snakes.values())[j - 1]
+                    display_row += f"\t\t\tSnake {j - 1}: {jth_snake.length}"
             board_str += display_row + "\n"
         board_str += "\n\t " + "  ".join(map(str, np.arange(0, self.width)))
         if show:
             print(board_str)
         return board_str
 
+    def crop_board(self, xs: Union[list, tuple], ys: Union[list, tuple]) -> np.array:
+        """Return a portion of the board"""
+        self.board = self.board[xs[0]:xs[1], ys[0]:ys[1]]
+
     def identify_snake(self, pos: Pos) -> Snake:
         """Given any position on the board, return the Snake lying on top of it"""
         matched = [snake for snake in self.all_snakes.values() if pos in snake.body]
         if len(matched) > 1:
-            raise Exception("Interesting edge case where two snakes are at the same position...")  # TODO idk tbh
+            matched = sorted(matched, key=lambda snake: snake.length, reverse=True)
         return matched[0]
 
     def closest_dist(self, start: Pos, end: Pos) -> int:
@@ -306,9 +317,6 @@ class Board:
                     return False, True
 
         return True, risky_flag
-
-    def crop_board(self, xs, ys):
-        self.board = self.board[xs[0]:xs[1], ys[0]:ys[1]]
 
     def flood_fill(
             self,

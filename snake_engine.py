@@ -441,7 +441,7 @@ class Battlesnake:
         # How cramped on space are we? 
         space_penalty = 0
         if space_all <= 3:
-            space_penalty = -500
+            space_penalty = -1500
         elif space_ra <= 3:
             space_penalty = -250
 
@@ -449,7 +449,7 @@ class Battlesnake:
         if space_all <= 15:
             self.trapped = self.trap_detection()
             # Penalise entrapment (-1e7) more than getting killed by an opponent (-1e6)
-            space_penalty = -1e7 if self.trapped and len(touch_opps) == 0 else 0
+            space_penalty = -1e7 if self.trapped and len(touch_opps) == 0 else space_penalty
         else:
             self.trapped = False
 
@@ -511,15 +511,16 @@ class Battlesnake:
 
             # enemy_space_ra, enemy_space_all, _, _ = self.board.flood_fill(closest_enemy, full_package=True)
             available_enemy_space = self.board.flood_fill(closest_enemy, risk_averse=True, confined_area=confined_area)
-            available_enemy_space_full = self.board.flood_fill(closest_enemy, risk_averse=True)
+            available_enemy_space_ra = self.board.flood_fill(closest_enemy, risk_averse=True)
+            available_enemy_space_all = self.board.flood_fill(closest_enemy, risk_averse=False)
 
-            if peripheral_ra > available_enemy_space or space_all > available_enemy_space_full:
-                if available_enemy_space_full <= 5:
+            if peripheral_ra > available_enemy_space or space_all > available_enemy_space_all:
+                if available_enemy_space_ra <= 5:
                     kill_bonus = 2000
 
                 elif available_enemy_space < 4:
                     kill_bonus = 1000
-                elif available_enemy_space_full <= 15 and space_ra > available_enemy_space_full + 2:  # Yay but only if we're not gonna be doo-doo
+                elif available_enemy_space_ra <= 15 and space_ra > available_enemy_space_ra + 2:  # Yay but only if we're not gonna be doo-doo
                     kill_bonus = 750
                 elif available_enemy_space < self.opponents[closest_enemy].length / 2.75:  # Used to be 4
                     kill_bonus = 500
@@ -531,8 +532,11 @@ class Battlesnake:
                 if kill_bonus != 2000:  # When it's not guaranteed yet
                     # Reward getting closer, but only if it doesn't trap us
                     kill_bonus += (1000 / self.board.closest_dist(self.you.head, self.all_snakes[closest_enemy].head) if not self.trapped else 0)
+                else:  # Guaranteed
+                    space_penalty = space_penalty / 2
                 # Reward if the opponent is getting least space
-                kill_bonus += (1000 / max(1, available_enemy_space_full) if not self.trapped else 0)
+                kill_bonus += (1000 / max(1, available_enemy_space_ra) if not self.trapped else 0)
+
         else:
             available_enemy_space = -2
             kill_bonus = 0
@@ -679,17 +683,17 @@ class Battlesnake:
             aggression_weight / (dist_to_enemy + 1) + cutoff_bonus + \
             (enemy_restriction_weight / (available_enemy_space + 1)) + kill_bonus
 
-        # print((space_ra * space_ra_weight) + space_penalty)
-        # print(peripheral_all_weight * peripheral_all)
-        # print(tot_opp_length_weight / (tot_opp_length + 1))
-        # print((threat_proximity_weight * num_threats) + danger_penalty)
-        # print(food_weight / (dist_food + 1))
-        # print(current_depth * current_depth_weight)
-        # print((self.you.length * length_weight))
-        # print(in_centre * centre_control_weight)
-        # print(on_edge * -centre_control_weight)
-        # print(aggression_weight / (dist_to_enemy + 1) + cutoff_bonus)
-        # print((enemy_restriction_weight / (available_enemy_space + 1)) + kill_bonus)
+        print((space_ra * space_ra_weight) + space_penalty)
+        print(peripheral_all_weight * peripheral_all)
+        print(tot_opp_length_weight / (tot_opp_length + 1))
+        print((threat_proximity_weight * num_threats) + danger_penalty)
+        print(food_weight / (dist_food + 1))
+        print(current_depth * current_depth_weight)
+        print((self.you.length * length_weight))
+        print(in_centre * centre_control_weight)
+        print(on_edge * -centre_control_weight)
+        print(aggression_weight / (dist_to_enemy + 1) + cutoff_bonus)
+        print((enemy_restriction_weight / (available_enemy_space + 1)) + kill_bonus)
 
         return h, {"Score": round(h, 2),
                    "Space|Pen": f"{space_ra},{space_penalty}",
