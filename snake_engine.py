@@ -700,9 +700,12 @@ class Battlesnake:
                     killer_length = killer.length
                     # How likely is the killer going to deliver the coup de grâce? E.g. he could get distracted by food
                     distraction = self.board.dist_to_nearest_food(killer.id)[0]
+                    # If we got immediately killed, then it's much worse than an edge kill down the line
+                    immediately_killed = -1e8 if depth >= self.minimax_search_depth - 2 else 0
                     # Add a killer penalty score to give higher weight to more advantageous deaths
-                    killer_penalty = -killer_length + (distraction if distraction <= 4 else 0)
-                heuristic = -1e6 + (self.minimax_search_depth - depth) + killer_penalty  # Reward slower deaths
+                    killer_penalty = immediately_killed - killer_length + (distraction if distraction <= 4 else 0)
+                # Big idea: reward slower deaths, penalise immediate death, account for dumb opponents not killing
+                heuristic = -1e6 + (self.minimax_search_depth - depth) + killer_penalty
                 return heuristic, None, {"Score": heuristic}
             # If our snake is the winner :)
             elif game_over:
