@@ -492,8 +492,11 @@ class Battlesnake:
             if peripheral_ra > available_enemy_space or space_all > available_enemy_space_full:
                 if available_enemy_space_full <= 5:
                     kill_bonus = 2000
+
                 elif available_enemy_space < 4:
                     kill_bonus = 1000
+                elif available_enemy_space_full <= 15 and space_ra > available_enemy_space_full:  # Yay but only if we're not gonna be doo-doo
+                    kill_bonus = 750
                 elif available_enemy_space < self.opponents[closest_enemy].length / 2.75:  # Used to be 4
                     kill_bonus = 500
                 else:
@@ -501,8 +504,9 @@ class Battlesnake:
             else:
                 kill_bonus = 0
             if kill_bonus > 0:
-                # Reward getting closer, but only if it doesn't trap us
-                kill_bonus += (1000 / self.board.closest_dist(self.you.head, self.all_snakes[closest_enemy].head) if not self.trapped else 0)
+                if kill_bonus != 2000:  # When it's not guaranteed yet
+                    # Reward getting closer, but only if it doesn't trap us
+                    kill_bonus += (1000 / self.board.closest_dist(self.you.head, self.all_snakes[closest_enemy].head) if not self.trapped else 0)
                 # Reward if the opponent is getting least space
                 kill_bonus += (1000 / max(1, available_enemy_space_full) if not self.trapped else 0)
         else:
@@ -560,7 +564,10 @@ class Battlesnake:
                              key=lambda opp: self.board.closest_dist(self.you.head, opp.head))[0]
 
         # TODO corner edge case
-        if (self.you.head.within_bounds(closest_opp.peripheral_vision(return_pos_only=True)) and
+        cutoff_bonus = 0
+        if kill_bonus >= 2000:
+            cutoff_bonus = kill_bonus
+        elif (self.you.head.within_bounds(closest_opp.peripheral_vision(return_pos_only=True)) and
                 not closest_opp.head.within_bounds(
                     self.you.peripheral_vision(direction=self.you.facing_direction(), return_pos_only=True)) and
                 (on_edge or (not on_edge and self.you.facing_direction() in me))):  # continue to cutoff, unless we're on the edge for an edge kill?
@@ -576,8 +583,7 @@ class Battlesnake:
 
             if cutoff_bonus > 0:
                 cutoff_bonus += (cutoff_bonus / (1 + cutting_off))
-        else:
-            cutoff_bonus = 0
+
 
         # Can we get cut off?
         if len(self.opponents) == 1 and self.you.length < closest_opp.length:
@@ -617,9 +623,14 @@ class Battlesnake:
         if len(self.opponents) == 1 and longest_flag:
             peripheral_weight = 0.5
 
+
         length_weight = 1250
         centre_control_weight = 20 if not (self.trapped or edge_killed) else 0
         threat_proximity_weight = -25
+
+        if len(threats) == 0 and kill_bonus == 0 and cutoff_bonus == 0 and not longest_flag:  # We're chilling tbh but need FOOD
+        #     peripheral_weight = 0.5
+            food_weight = 350
 
         logging.info(f"Available space: {space_ra}")
         logging.info(f"Space penalty: {space_penalty}")
