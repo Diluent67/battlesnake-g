@@ -193,7 +193,7 @@ class Battlesnake:
             "height": self.board.height,
             "width": self.board.width,
             "food": [xy.as_dict() for xy in self.board.food],
-            "hazards": self.board.hazards.copy(),
+            "hazards": [xy.as_dict() for xy in self.board.hazards],
             "snakes": all_snakes
         }
 

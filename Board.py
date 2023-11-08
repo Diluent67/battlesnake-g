@@ -19,6 +19,7 @@ class Board:
         self.width = board_dict["width"]
         self.height = board_dict["height"]
         self.food = [Pos(xy) for xy in board_dict["food"]]
+        print(board_dict["hazards"])
         self.hazards = [Pos(xy) for xy in board_dict["hazards"]]
         if all_snakes is None:
             all_snakes: dict[str, Snake] = {}
