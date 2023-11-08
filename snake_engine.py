@@ -1,6 +1,7 @@
 from __future__ import annotations
 import logging
 import matplotlib.pyplot as plt
+import networkx as nx
 import numpy as np
 import sys
 import time
@@ -14,9 +15,9 @@ from Snake import Snake
 my_name = "Nightwing"
 # Use these global variables to add data for visualising the minimax decision tree
 tree_tracker = {6: [], 5: [], 4: [], 3: [], 2: [], 1: [], 0: []}
+tree_node_counter = 1
 tree_edges = []
 tree_nodes = []
-tree_node_counter = 1
 
 
 class Battlesnake:
@@ -433,6 +434,13 @@ class Battlesnake:
         else:
             space_penalty = 0
 
+        # Are we in the centre of the board? Maximise control
+        centre = range(self.board.width // 2 - 2, self.board.width // 2 + 3)
+        in_centre = (self.you.head.as_dict()["x"] in centre and self.you.head.as_dict()["x"] in centre) and (
+                len(self.opponents) <= 2)
+        # Are we on the edge? Try to stay away if possible
+        on_edge = self.you.head.x in [0, self.board.width - 1] or self.you.head.y in [0, self.board.height - 1]
+
         # Are we trapped?
         if space_all <= 15:
             trapped = self.trap_detection()
@@ -448,6 +456,7 @@ class Battlesnake:
 
         # How much space do we have in our peripheral?
         peripheral = self.board.flood_fill(self.you.id, risk_averse=False, confined_area="auto")
+        peripheral_ra = self.board.flood_fill(self.you.id, risk_averse=True, confined_area="auto")
 
         # We want to minimise available space for our opponents via flood fill (but only when there are fewer snakes in
         # our vicinity)
@@ -480,7 +489,7 @@ class Battlesnake:
             available_enemy_space = self.board.flood_fill(closest_enemy, risk_averse=True, confined_area=confined_area)
             available_enemy_space_full = self.board.flood_fill(closest_enemy, risk_averse=True)
 
-            if peripheral > available_enemy_space or space_all > available_enemy_space_full:
+            if peripheral_ra > available_enemy_space or space_all > available_enemy_space_full:
                 if available_enemy_space_full <= 5:
                     kill_bonus = 2000
                 elif available_enemy_space < 4:
@@ -494,6 +503,8 @@ class Battlesnake:
             if kill_bonus > 0:
                 # Reward getting closer, but only if it doesn't trap us
                 kill_bonus += (1000 / self.board.closest_dist(self.you.head, self.all_snakes[closest_enemy].head) if not self.trapped else 0)
+                # Reward if the opponent is getting least space
+                kill_bonus += (1000 / max(1, available_enemy_space_full) if not self.trapped else 0)
         else:
             available_enemy_space = -2
             kill_bonus = 0
@@ -540,17 +551,19 @@ class Battlesnake:
                 if sum([esc in me for esc in connection]) == 0:
                     collision_inbound = True
         if collision_inbound:
-            danger_penalty = -15 * diff_lengths
+            danger_penalty = -15 * diff_lengths - 15/self.you.head.manhattan_dist(self.all_snakes[closest_enemy].head)
         else:
             danger_penalty = 0
 
         # Can we cut off our opponents?
         closest_opp = sorted(self.opponents.values(),
                              key=lambda opp: self.board.closest_dist(self.you.head, opp.head))[0]
-        if self.you.head.within_bounds(closest_opp.peripheral_vision(return_pos_only=True)) and \
+
+        # TODO corner edge case
+        if (self.you.head.within_bounds(closest_opp.peripheral_vision(return_pos_only=True)) and
                 not closest_opp.head.within_bounds(
-                    self.you.peripheral_vision(direction=self.you.facing_direction(), return_pos_only=True)) and \
-                self.you.facing_direction() in me:
+                    self.you.peripheral_vision(direction=self.you.facing_direction(), return_pos_only=True)) and
+                (on_edge or (not on_edge and self.you.facing_direction() in me))):  # continue to cutoff, unless we're on the edge for an edge kill?
             cutting_off = self.board.flood_fill(closest_opp.id, cutoff=self.you.id)
             if cutting_off <= 15:
                 cutoff_bonus = 2500
@@ -583,12 +596,7 @@ class Battlesnake:
         longest_flag = True if sum([self.you.length > snake.length for snake in self.opponents.values()]) == len(
             self.opponents) else False
 
-        # Are we in the centre of the board? Maximise control
-        centre = range(self.board.width // 2 - 2, self.board.width // 2 + 3)
-        in_centre = (self.you.head.as_dict()["x"] in centre and self.you.head.as_dict()["x"] in centre) and (
-                len(self.opponents) <= 2)
-        # Are we on the edge? Try to stay away if possible
-        on_edge = self.you.head.x in [0, self.board.width - 1] or self.you.head.y in [0, self.board.height - 1]
+
 
         # Heuristic formula
         depth_weight = 25
@@ -598,13 +606,19 @@ class Battlesnake:
         space_weight = 1
         peripheral_weight = 2
         enemy_restriction_weight = 0 if available_enemy_space == -2 else 75 if len(self.opponents) > 2 else 200
+        if self.trapped or edge_killed:
+            enemy_restriction_weight = 0
         food_weight = 250 if health_flag else 200 if shortest_flag else 25 if longest_flag else 300/dist_food if dist_food <= 3 else 50
 
         if kill_bonus > 0:
             food_weight = 10
             peripheral_weight = 0.5
+        # Get more aggressive if we're longer and there's only one snake left!
+        if len(self.opponents) == 1 and longest_flag:
+            peripheral_weight = 0.5
+
         length_weight = 1250
-        centre_control_weight = 20
+        centre_control_weight = 20 if not (self.trapped or edge_killed) else 0
         threat_proximity_weight = -25
 
         logging.info(f"Available space: {space_ra}")
@@ -635,10 +649,23 @@ class Battlesnake:
             aggression_weight / (dist_to_enemy + 1) + cutoff_bonus + \
             (enemy_restriction_weight / (available_enemy_space + 1)) + kill_bonus
 
+        # print((space_ra * space_weight) + space_penalty)
+        # print(peripheral_weight * peripheral)
+        # print(enemy_length_weight / (opponent_lengths + 1))
+        # print((threat_proximity_weight * num_threats) + danger_penalty)
+        # print(food_weight / (dist_food + 1))
+        # print(layers_deep * depth_weight)
+        # print((self.you.length * length_weight))
+        # print(in_centre * centre_control_weight)
+        # print(on_edge * -centre_control_weight)
+        # print(aggression_weight / (dist_to_enemy + 1) + cutoff_bonus)
+        # print((enemy_restriction_weight / (available_enemy_space + 1)) + kill_bonus)
+
         return h, {"Score": round(h, 2),
                    "Space|Pen": f"{space_ra},{space_penalty}",
                    "Periph": peripheral,
                    "Food Dist": dist_food,
+                   "Danger": f"{danger_penalty},{collision_inbound}",
                    "Opp Dist|Len": f"{dist_to_enemy},{opponent_lengths}",
                    "Opp Space|Kill": f"{available_enemy_space},{kill_bonus}",
                    "Threats": num_threats,
@@ -714,8 +741,8 @@ class Battlesnake:
                     logging.info(simulation.dict)
 
                 # Add the move to the minimax tree plot as a node and create an edge to its parent node
-                edge_added = self.update_tree_graphic(add_edges=True, depth=depth - 1)
                 node_added = self.update_tree_graphic(add_nodes=True, depth=depth - 1, node_data=move)
+                edge_added = self.update_tree_graphic(add_edges=True, depth=depth - 1)
                 # Run minimax on the new simulated board
                 clock_in2 = time.time_ns()
                 node_score, node_move, node_data = simulation.minimax(depth - 1, alpha, beta, False)
@@ -740,7 +767,7 @@ class Battlesnake:
                     logging.info(f"PRUNED!!! alpha = {alpha} >= beta = {beta}")
                     break
 
-            self.update_tree_graphic(depth=depth, update_best_edge=best_edge)
+            self.update_tree_graphic(update_best_edge=best_edge)
             logging.info(f"Finished minimax layer on our snake in {round((time.time_ns() - clock_in) / 1000000, 3)} ms")
             return best_score, best_move, best_node_data
 
@@ -752,7 +779,7 @@ class Battlesnake:
             # Simulate full set of opponent moves only if they're within a certain distance of our snake
             if len(self.opponents) == 1:
                 focus_within = self.board.width * self.board.height
-            elif len(self.opponents) == 2:
+            elif len(self.opponents) <= 3:
                 focus_within = self.board.width
             else:
                 focus_within = self.board.width // 2
@@ -792,7 +819,7 @@ class Battlesnake:
             threat_opps = sorted(opps_scores, key=lambda combo: combo[1])  # Sort all opponent moves by their heuristic
             worst_opp_tracker = {}  # Keep track of which opponent moves we've finished building move combos around
             sim_move_combos = []  # Append simulations for final move combinations (each one is a child node)
-            sim_movesets = []  # For each simulation, keep track of the move combination so we don't repeat any
+            sim_movesets = []  # For each simulation, keep track of the move combination, so we don't repeat any
             num_sims = 3  # The maximum number of move combinations
             clock_in = time.time_ns()
             for worst_threat in threat_opps:
@@ -816,30 +843,33 @@ class Battlesnake:
                 # Avoid adding the same move combination
                 if move_combo in sim_movesets:
                     continue
-
                 # Now simulate a board with the newly created opponent moveset combo!
                 simulation = self.simulate_move(move_combo, evaluate_deaths=True)
                 sim_move_combos.append(simulation)
                 sim_movesets.append(move_combo)
 
             # Rewrite the move combinations into a user-friendly form for debugging
-            log_movesets = []
-            for move_combo in sim_movesets:
-                log_movesets.append([f"{num + 1}: {move_combo[opp]}" for num, opp in enumerate(self.opponents.keys())])
+            if self.debugging:
+                by_number = []
+                for move_combo in sim_movesets:
+                    by_number.append([f"{num + 1}: {move_combo[opp]}" for num, opp in enumerate(self.opponents.keys())])
+                sim_movesets = by_number
+
             logging.info(f"Simulated {len(sim_move_combos)} possible move combos in "
                          f"{round((time.time_ns() - clock_in) / 1000000, 3)} ms")
 
             clock_in = time.time_ns()
             best_score, best_move, best_node_data, best_edge = np.inf, None, None, None
+            # Each child node will be a new board simulating a possible opponent move combination
             for num, simulation in enumerate(sim_move_combos):
-                logging.info(f"Visiting {num + 1} of {len(sim_move_combos)} child nodes: {log_movesets[num]}")
+                logging.info(f"Visiting {num + 1} of {len(sim_move_combos)} child nodes: {sim_movesets[num]}")
                 if self.debugging:
                     logging.info(simulation.board.display(show=False))
                     logging.info(simulation.dict)
 
                     # Add the move to the minimax tree plot as a node and create an edge to its parent node
+                node_added = self.update_tree_graphic(add_nodes=True, depth=depth - 1, node_data=sim_movesets[num])
                 edge_added = self.update_tree_graphic(add_edges=True, depth=depth - 1)
-                node_added = self.update_tree_graphic(add_nodes=True, depth=depth - 1, node_data=str(log_movesets[num]))
                 # Run minimax on the new simulated board
                 clock_in2 = time.time_ns()
                 node_score, node_move, node_data = simulation.minimax(depth - 1, alpha, beta, True)
@@ -864,74 +894,92 @@ class Battlesnake:
                     logging.info(f"PRUNED!!! alpha = {alpha} >= beta = {beta}")
                     break
 
-            self.update_tree_graphic(depth=depth, update_best_edge=best_edge)
+            self.update_tree_graphic(update_best_edge=best_edge)
             logging.info(f"Finished minimax layer on opponents in {(time.time_ns() - clock_in) // 1000000} ms")
             return best_score, best_move, best_node_data
 
-    def optimal_move(self):
-        """Let's run the minimax algorithm with alpha-beta pruning!"""
+    def optimal_move(self) -> str:
+        """Main function to identify the most optimal move for our snake"""
         if self.turn <= 3:
             depth = 3
         else:
             depth = self.minimax_search_depth
 
-        tree_tracker[depth].append(0)
-
         logging.info("STARTING POSITION")
         logging.info(self.board.display(show=False))
-        # Compute the best score of each move using the minimax algorithm with alpha-beta pruning
+
+        tree_tracker[depth].append(0)  # Add our initial node
         _, best_move, _ = self.minimax(depth=depth, alpha=-np.inf, beta=np.inf, maximising_snake=True)
 
         # Output a visualisation of the minimax decision tree for debugging
-        if self.debugging:
-            import networkx as nx
+        self.update_tree_graphic(create_plot=True)
+        return best_move
+
+    def update_tree_graphic(
+            self,
+            add_nodes: Optional[bool] = False,
+            add_edges: Optional[bool] = False,
+            depth: Optional[int] = None,
+            node_data: Optional[Any] = None,
+            insert_at: Optional[int] = None,
+            update_best_edge: Optional[int] = None,
+            create_plot: Optional[bool] = False,
+    ):
+        """
+        Utility function that constructs a minimax tree visualisation for debugging purposes. Makes use of 4 global
+        variables to gather nodes and edges in a structured, organised manner while we traverse the minimax search tree.
+
+        :param add_nodes: If True, add a new node at the "tree_node_counter" position and update the "tree_tracker"
+        :param add_edges: If True, add an edge between the current "tree_node_counter" node and a child node
+        :param depth: Keeps track of what depth to add a node or edge
+        :param node_data: Used with add_nodes=True. Holds the heuristic metrics to add
+        :param insert_at: Used with add_nodes=True. Insert node heuristic metrics at a certain node index
+        :param update_best_edge: Feeds in an index to the "tree_edge" variable. Outline the best edge for a node in red
+        :param create_plot: If True, create the final visualisation and save it as a PNG
+        """
+        if not self.debugging:
+            return None
+
+        global tree_tracker
+        global tree_node_counter
+        global tree_nodes
+        global tree_edges
+
+        if add_nodes:
+            if insert_at is not None:  # Do we have to update any node with heuristic metrics?
+                node_move = tree_nodes[insert_at][1]
+                formatted_dict = str(node_data).replace(", ", "\n").replace("{", "").replace(
+                    "}", "").replace("'", "")
+                tree_nodes[insert_at] = (tree_tracker[depth][-1], node_move + "\n" + formatted_dict)
+                return
+            else:
+                tree_tracker[depth].append(tree_node_counter)  # Add the node to our tree dictionary at the right depth
+                tree_nodes.append((tree_tracker[depth][-1], str(node_data)))
+                return len(tree_nodes) - 1
+
+        if add_edges:
+            # Tuple of (node_1, node_2, node_attributes) where the edge is created between node_1 and node_2
+            tree_edges.append((tree_tracker[depth + 1][-1], tree_tracker[depth][-1], {"colour": "k", "width": 1}))
+            tree_node_counter += 1  # Now we're on the next node
+            return len(tree_edges) - 1  # Keep track of where we added the edge
+
+        if update_best_edge is not None:
+            tree_edges[update_best_edge][2]["colour"] = "r"
+            tree_edges[update_best_edge][2]["width"] = 5
+
+        if create_plot:
             G = nx.Graph()
-            node_labels = {}
+            G.add_node(0)
+            node_labels = {0: ""}
             for node in tree_nodes:
                 G.add_node(node[0])
                 node_labels[node[0]] = node[1]
-            G.add_node(0)
-            node_labels[0] = ""
             G.add_edges_from(tree_edges)
             pos = hierarchy_pos(G, 0)
             edge_colours = [G[u][v]["colour"] for u, v in G.edges()]
             edge_widths = [G[u][v]["width"] for u, v in G.edges()]
-
+            # Plot the minimax diagram as a hierarchical tree
             plt.figure(figsize=(50, 25))
             nx.draw(G, pos=pos, node_color=["white"] * G.number_of_nodes(), edge_color=edge_colours, width=edge_widths,
                     labels=node_labels, with_labels=True, node_size=40000, font_size=20)
             plt.savefig("minimax_tree.png", bbox_inches="tight", pad_inches=0)
-
-        return best_move
-
-    def update_tree_graphic(self, depth, add_edges=False, add_nodes=False, node_data=None, insert_at=None, update_best_edge=None):
-        if not self.debugging:
-            return None
-
-        global tree_node_counter
-        global tree_tracker
-        global tree_edges
-        global tree_nodes
-
-        if update_best_edge is not None:
-            tree_edges[update_best_edge][2]["colour"] = "r"
-            tree_edges[update_best_edge][2]["width"] = 4
-
-        if add_edges:
-            # Add the node that we'll be creating the edge to
-            tree_tracker[depth].append(tree_node_counter)
-            # Tuple of (node_1, node_2, node_attributes) where the edge is created between node_1 and node_2
-            tree_edges.append((tree_tracker[depth + 1][-1], tree_tracker[depth][-1], {"colour": "k", "width": 1}))
-            # Now we're going to be on the next node
-            tree_node_counter += 1
-            return len(tree_edges) - 1
-
-        if add_nodes:
-
-            if insert_at is not None:
-                node_move = tree_nodes[insert_at][1]
-                formatted_dict = str(node_data).replace(", ", "\n").replace("{", "").replace("}", "").replace("'", "")
-                tree_nodes[insert_at] = (tree_tracker[depth][-1], node_move + "\n" + formatted_dict)
-            else:
-                tree_nodes.append((tree_tracker[depth][-1], str(node_data).replace("'", "")))
-            return len(tree_nodes) - 1
