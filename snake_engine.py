@@ -103,7 +103,7 @@ class Battlesnake:
             if sort_by_dist_to is not None:
                 head2 = self.all_snakes[sort_by_dist_to].head
                 possible_moves = sorted(possible_moves,
-                                        key=lambda move2: self.board.closest_dist(head2, head.moved_to(move2)))
+                                        key=lambda move2: self.board.shortest_dist(head2, head.moved_to(move2)))
             if sort_by_peripheral:
                 possible_moves = sorted(possible_moves,
                                         key=lambda move2: self.board.flood_fill(snake_id, confined_area=move2),
@@ -366,7 +366,7 @@ class Battlesnake:
         if self.board.space_all <= 15:
             # Check if we're trapped along with another snake
             if len(self.board.touch_opps) > 0:
-                dist_to_trapped_opp, path_to_trapped_opp = self.board.dijkstra_shortest_dist(
+                dist_to_trapped_opp, path_to_trapped_opp = self.board.dijkstra_shortest_path(
                     self.you.head, self.board.touch_opps[0], get_path=True)
                 trapped_opp = self.board.identify_snake(self.board.touch_opps[0])
                 # We'll win the incoming collision if we're longer and colliding on the same square
@@ -398,11 +398,11 @@ class Battlesnake:
                 openings_in_boundary = sorted(openings_in_boundary, key=lambda op: self.you.head.manhattan_dist(op))
             # Find the longest path to reach the opening (in case we're running out of space and need to stall)
             opening = openings_in_boundary[0]
-            longest_path_till_opening = self.board.stall_path(self.you.head, opening)
+            longest_path_till_opening = self.board.longest_path(self.you.head, opening)
             # If there's another trapped snake approaching us, see if we can reach the opening before a collision
             if collision_square is not None:
-                if (self.board.closest_dist(self.you.head, opening) <
-                        self.board.closest_dist(self.you.head, Pos(collision_square[0], collision_square[1]))):  # TODO make into a dict
+                if (self.board.shortest_dist(self.you.head, opening) <
+                        self.board.shortest_dist(self.you.head, Pos(collision_square[0], collision_square[1]))):  # TODO make into a dict
                     trapped = True
             else:
                 trapped = longest_path_till_opening < moves_until_opening
@@ -458,7 +458,7 @@ class Battlesnake:
         space_penalty = -1e7 if edge_killed else space_penalty
 
         # Determine the closest safe distance to food
-        dist_food, best_food = self.board.dist_to_nearest_food(self.you.id)
+        dist_food, best_food = self.board.closest_dist_to_food(self.you.id)
         if best_food is not None:
             logging.info(f"Closest distance to food = {dist_food, best_food.as_dict()}")
         low_health_flag = True if self.you.health < 40 else False
@@ -485,7 +485,7 @@ class Battlesnake:
         # We want to minimise available space for our opponents via flood fill (but only when there are fewer snakes in
         # our vicinity)
         dist_from_enemies = sorted(
-            [self.board.closest_dist(self.you.head, opp.head) for opp in self.opponents.values()])
+            [self.board.shortest_dist(self.you.head, opp.head) for opp in self.opponents.values()])
         djikstra_flag = sum([dist <= 3 for dist in dist_from_enemies]) >= 1
         dist_from_enemies_manhattan = sorted(
             [self.you.head.manhattan_dist(opp.head) for opp in self.opponents.values()])
@@ -493,7 +493,7 @@ class Battlesnake:
         if len(self.opponents) <= 3 or djikstra_flag or manhattan_flag:
             self.peripheral_size = 4
             if djikstra_flag:
-                closest_enemy = sorted(self.opponents.keys(), key=lambda opp_id: self.board.closest_dist(self.you.head,
+                closest_enemy = sorted(self.opponents.keys(), key=lambda opp_id: self.board.shortest_dist(self.you.head,
                                                                                                          self.opponents[
                                                                                                              opp_id].head))[
                     0]
@@ -522,6 +522,7 @@ class Battlesnake:
                     kill_bonus = 1000
                 elif available_enemy_space_ra <= 15 and space_ra > available_enemy_space_ra + 2:  # Yay but only if we're not gonna be doo-doo
                     kill_bonus = 750
+                    space_penalty = 0  # restore our space advantage hehe
                 elif available_enemy_space < self.opponents[closest_enemy].length / 2.75:  # Used to be 4
                     kill_bonus = 500
                 else:
@@ -531,7 +532,7 @@ class Battlesnake:
             if kill_bonus > 0:
                 if kill_bonus != 2000:  # When it's not guaranteed yet
                     # Reward getting closer, but only if it doesn't trap us
-                    kill_bonus += (1000 / self.board.closest_dist(self.you.head, self.all_snakes[closest_enemy].head) if not self.trapped else 0)
+                    kill_bonus += (1000 / self.board.shortest_dist(self.you.head, self.all_snakes[closest_enemy].head) if not self.trapped else 0)
                 else:  # Guaranteed
                     space_penalty = space_penalty / 2
                 # Reward if the opponent is getting least space
@@ -550,7 +551,7 @@ class Battlesnake:
         # Get closer to enemy snakes if we're longer
         if 2 >= len(self.opponents) == sum([self.you.length >= s.length + 1 for s in self.opponents.values()]):
             dist_from_enemies = sorted(
-                [self.board.dijkstra_shortest_dist(self.you.head, opp.head) for opp in self.opponents.values()])
+                [self.board.shortest_dist(self.you.head, opp.head) for opp in self.opponents.values()])
             dist_to_enemy = dist_from_enemies[0]
         else:
             dist_to_enemy = 0
@@ -562,7 +563,7 @@ class Battlesnake:
             aggression_weight = 0
 
         # If we're getting too close to enemy snakes that are longer, RETREAT
-        threats = [self.board.dijkstra_shortest_dist(self.you.head, opp.head) for opp in self.opponents.values() if
+        threats = [self.board.shortest_dist(self.you.head, opp.head) for opp in self.opponents.values() if
                    opp.length > self.you.length and opp.head.within_bounds(
                        self.you.peripheral_vision(return_pos_only=True))]
         num_threats = (np.count_nonzero(np.array(threats) <= 2) * 2
@@ -570,7 +571,7 @@ class Battlesnake:
 
         collision_inbound = False
         me = self.get_obvious_moves(snake_id=self.you.id)
-        closest_enemy = sorted(self.opponents.keys(), key=lambda opp_id: self.board.closest_dist(self.you.head,
+        closest_enemy = sorted(self.opponents.keys(), key=lambda opp_id: self.board.shortest_dist(self.you.head,
                                                                                                  self.opponents[
                                                                                                      opp_id].head))[0]
         them = self.get_obvious_moves(snake_id=closest_enemy)
@@ -589,7 +590,7 @@ class Battlesnake:
 
         # Can we cut off our opponents?
         closest_opp = sorted(self.opponents.values(),
-                             key=lambda opp: self.board.closest_dist(self.you.head, opp.head))[0]
+                             key=lambda opp: self.board.shortest_dist(self.you.head, opp.head))[0]
 
         # TODO corner edge case
         cutoff_bonus = 0
@@ -599,7 +600,7 @@ class Battlesnake:
                 not closest_opp.head.within_bounds(
                     self.you.peripheral_vision(direction=self.you.facing_direction(), return_pos_only=True)) and
                 (on_edge or (not on_edge and self.you.facing_direction() in me))):  # continue to cutoff, unless we're on the edge for an edge kill?
-            cutting_off = self.board.flood_fill(closest_opp.id, cutoff=self.you.id)
+            cutting_off = self.board.flood_fill(closest_opp.id, opp_cutoff=self.you.id)
             if cutting_off <= 15:
                 cutoff_bonus = 2500
             elif cutting_off <= self.board.width * self.board.height / 6:
@@ -615,18 +616,22 @@ class Battlesnake:
 
         # Can we get cut off?
         if len(self.opponents) == 1:
-            us_cutoff = self.board.flood_fill(closest_opp.id, cutoff=self.you.id)
-            opp_cutoff = self.board.flood_fill(self.you.id, cutoff=closest_opp.id)
+            us_cutoff = self.board.flood_fill(closest_opp.id, opp_cutoff=self.you.id)
+            opp_cutoff = self.board.flood_fill(self.you.id, opp_cutoff=closest_opp.id)
             if self.you.length < closest_opp.length:
-                if opp_cutoff <= 15:
+                if opp_cutoff < 15:
                     if space_penalty == 0:
                         space_penalty = -500
             else:
-                if opp_cutoff <= 15 and us_cutoff > opp_cutoff:  # We hsould be in the better position
+                if opp_cutoff <= 15 and us_cutoff > opp_cutoff:  # Penalise if we're in a worse position
                     if space_penalty == 0:
                         space_penalty = -500
+                    if cutoff_bonus > 0:  # Reduce the cutoff if we're the ones getting cut off lol
+                        cutoff_bonus = 0
 
-
+        length_weight = 1250
+        if space_penalty < 0:
+            length_weight = 100
 
 
 
@@ -647,7 +652,7 @@ class Battlesnake:
             peripheral_all_weight = 0.5
 
 
-        length_weight = 1250
+
         centre_control_weight = 20 if not (self.trapped or edge_killed) else 0
         threat_proximity_weight = -25
 
@@ -662,7 +667,7 @@ class Battlesnake:
         logging.info(f"Threats within 3 squares of us: {num_threats}")
         logging.info(f"Incoming collision penalty: {danger_penalty}")
         logging.info(f"Distance to nearest enemy: {dist_to_enemy}")
-        logging.info(f"Actual dist: {self.board.closest_dist(self.you.head, self.all_snakes[closest_enemy].head)  }")
+        logging.info(f"Actual dist: {self.board.shortest_dist(self.you.head, self.all_snakes[closest_enemy].head)  }")
         logging.info(f"Distance to nearest food: {dist_food}")
         logging.info(f"Layers deep in search tree: {current_depth}")
         logging.info(f"Available enemy space: {available_enemy_space}")
@@ -683,27 +688,15 @@ class Battlesnake:
             aggression_weight / (dist_to_enemy + 1) + cutoff_bonus + \
             (enemy_restriction_weight / (available_enemy_space + 1)) + kill_bonus
 
-        print((space_ra * space_ra_weight) + space_penalty)
-        print(peripheral_all_weight * peripheral_all)
-        print(tot_opp_length_weight / (tot_opp_length + 1))
-        print((threat_proximity_weight * num_threats) + danger_penalty)
-        print(food_weight / (dist_food + 1))
-        print(current_depth * current_depth_weight)
-        print((self.you.length * length_weight))
-        print(in_centre * centre_control_weight)
-        print(on_edge * -centre_control_weight)
-        print(aggression_weight / (dist_to_enemy + 1) + cutoff_bonus)
-        print((enemy_restriction_weight / (available_enemy_space + 1)) + kill_bonus)
-
         return h, {"Score": round(h, 2),
-                   "Space|Pen": f"{space_ra},{space_penalty}",
-                   "Periph": peripheral_all,
-                   "Food Dist": dist_food,
-                   "Danger": f"{danger_penalty},{collision_inbound}",
-                   "Opp Dist|Len": f"{dist_to_enemy},{tot_opp_length}",
-                   "Opp Space|Kill": f"{available_enemy_space},{kill_bonus}",
-                   "Threats": num_threats,
-                   "Length": self.you.length}
+                   "Space | Pen": f"{space_ra} | {space_penalty} => {(space_ra * space_ra_weight) + space_penalty}",
+                   "Centre | Edge": f"{in_centre * centre_control_weight} | {on_edge * -centre_control_weight}",
+                   "Periph": f"{peripheral_all} => {peripheral_all_weight * peripheral_all}",
+                   "Food | Opp Dist": f"{dist_food} {dist_to_enemy} | => {round(food_weight / (dist_food + 1), 2)} | {round((aggression_weight / (dist_to_enemy + 1)), 2)}",
+                   "Opp Space | Len": f"{available_enemy_space} | {tot_opp_length} => {available_enemy_space} | {round(tot_opp_length_weight / (tot_opp_length + 1), 2)}",
+                   "Danger | Kill | Cutoff": f"{danger_penalty} | {kill_bonus} | {cutoff_bonus}",
+                   "Threats": f"{num_threats} => {(threat_proximity_weight * num_threats) + danger_penalty}",
+                   "Length": f"{self.you.length} => {(self.you.length * length_weight)}"}
 
     def minimax(self, depth: int, alpha: float, beta: float, maximising_snake: bool) -> tuple[float, Any, dict]:
         """
@@ -733,7 +726,7 @@ class Battlesnake:
                     # We'd prefer to get killed by a smaller snake in case we're the same length and can kill them too
                     killer_length = killer.length
                     # How likely is the killer going to deliver the coup de grâce? E.g. he could get distracted by food
-                    distraction = self.board.dist_to_nearest_food(killer.id)[0]
+                    distraction = self.board.closest_dist_to_food(killer.id)[0]
                     # If we got immediately killed, then it's much worse than an edge kill down the line
                     immediately_killed = -1e8 if depth >= self.minimax_search_depth - 2 else 0
                     # Add a killer penalty score to give higher weight to more advantageous deaths
@@ -835,7 +828,7 @@ class Battlesnake:
                 opp_scores = []
                 for move in opp_moves:
                     moved_head = opp_snake.head.moved_to(move)
-                    dist_from_us = self.board.closest_dist(self.you.head, moved_head)
+                    dist_from_us = self.board.shortest_dist(self.you.head, moved_head)
                     opp_space = self.board.flood_fill(opp_id, risk_averse=False, confined_area=move)
                     opp_length = (1 / (opp_snake.length + (1 if moved_head in self.board.food else 0)))
                     opp_penalty = 100 if dist_from_us == 1 and opp_snake.length <= self.you.length else 0

@@ -13,11 +13,11 @@ print(b.board.flood_fill(b.you.id, risk_averse=True))  # 58
 print(b.board.flood_fill(b.you.id, risk_averse=False))  # 78
 print(f"Done in {round((time.time_ns() - clock_in) / 1000000, 3)} ms")
 
-space_left, opps = b.board.flood_fill(b.you.id, risk_averse=False, return_touching_opps=True)
+space_left, opps = b.board.flood_fill(b.you.id, risk_averse=False, get_touching_opps=True)
 print(f"Number of opp heads: {len(set(opps))}")
 print(f"{[opp.as_tuple() for opp in opps]}")
 
-_, boundaries = b.board.flood_fill(b.you.id, risk_averse=False,  return_boundaries=True)
+_, boundaries = b.board.flood_fill(b.you.id, risk_averse=False,  get_boundaries=True)
 boundaries = [opp.as_tuple() for opp in boundaries]
 print(f"Number of bounds: {len(set(boundaries))}")
 print(f"{sorted(boundaries)}")

@@ -108,7 +108,7 @@ def display_board(self, board: Optional[np.array] = None, return_string: Optiona
     #         confined_area: Optional[str] = None,
     #         risk_averse: Optional[bool] = False,
     #         fast_forward: Optional[int] = 0,
-    #         return_touching_opps: Optional[bool] = False
+    #         get_touching_opps: Optional[bool] = False
     # ) -> int | tuple[int, list]:
     #     """
     #     Recursive function to get the total available space for a given snake. Basically, count how many £ symbols
@@ -121,7 +121,7 @@ def display_board(self, board: Optional[np.array] = None, return_string: Optiona
     #     :param fast_forward: Hypothetical scenarios where we want to see how much space we still have after moving
     #         X turns ahead. E.g. if we set it to 5, then we remove 5 squares from all snake's tails before doing flood
     #         fill - this is only useful when we suspect we'll be trapped by an opponent snake.
-    #     :param return_touching_opps: Option to return a list of other snakes whose heads our flood fill is touching
+    #     :param get_touching_opps: Option to return a list of other snakes whose heads our flood fill is touching
     #
     #     :return: The total area of the flood fill selection
     #     """
@@ -196,7 +196,7 @@ def display_board(self, board: Optional[np.array] = None, return_string: Optiona
     #     filled = sum((row == "£").sum() for row in board)
     #     flood_fill = max(filled - 1, 0)  # Exclude the head from the count, but cannot ever be negative
     #
-    #     if return_touching_opps:
+    #     if get_touching_opps:
     #         return flood_fill, opp_heads_in_contact, boundary_pos
     #     else:
     #         return flood_fill

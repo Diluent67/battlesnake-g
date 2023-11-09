@@ -99,6 +99,12 @@ def forsake_food():
     next_move = Battlesnake(game_state).optimal_move()
     assert next_move not in ["up"]
 
+    # You will get trapped
+    game_state = {"game":{"id":"bf52fd8e-9cd7-4f9c-a328-db6d31f35a41","ruleset":{"name":"standard","version":"cli","settings":{"foodSpawnChance":15,"minimumFood":1,"hazardDamagePerTurn":14,"hazardMap":"","hazardMapAuthor":"","royale":{"shrinkEveryNTurns":25},"squad":{"allowBodyCollisions":False,"sharedElimination":False,"sharedHealth":False,"sharedLength":False}}},"map":"standard","timeout":500,"source":""},"turn":191,"board":{"height":11,"width":11,"snakes":[{"id":"de4c5e43-836c-4a46-a463-2e13ec3a51e8","name":"Rick2","latency":"112","health":80,"body":[{"x":4,"y":3},{"x":3,"y":3},{"x":2,"y":3},{"x":2,"y":4},{"x":2,"y":5},{"x":2,"y":6},{"x":2,"y":7},{"x":1,"y":7},{"x":1,"y":8},{"x":0,"y":8},{"x":0,"y":9},{"x":0,"y":10}],"head":{"x":4,"y":3},"length":12,"shout":"","squad":"","customizations":{"color":"#00ff00","head":"shark","tail":"coffee"}},{"id":"963133d6-1d17-46b6-8a39-28a3cabbeeaf","name":"Nightwing","latency":"197","health":100,"body":[{"x":5,"y":0},{"x":5,"y":1},{"x":5,"y":2},{"x":5,"y":3},{"x":5,"y":4},{"x":5,"y":5},{"x":6,"y":5},{"x":7,"y":5},{"x":8,"y":5},{"x":9,"y":5},{"x":9,"y":6},{"x":10,"y":6},{"x":10,"y":7},{"x":10,"y":8},{"x":10,"y":9},{"x":10,"y":9}],"head":{"x":5,"y":0},"length":16,"shout":"","squad":"","customizations":{"color":"#3333ff","head":"ski","tail":"mystic-moon"}}],"food":[{"x":4,"y":0},{"x":9,"y":0}],"hazards":[]},"you":{"id":"9f0e6b1e-3d0c-4cf9-903f-0c4b1a423090","name":"Rick3","latency":"122","health":49,"body":[{"x":9,"y":1},{"x":9,"y":0},{"x":10,"y":0},{"x":10,"y":1},{"x":10,"y":2},{"x":10,"y":3}],"head":{"x":9,"y":1},"length":6,"shout":"","squad":"","customizations":{"color":"#00ff00","head":"shark","tail":"coffee"}}}
+    next_move = Battlesnake(game_state).optimal_move()
+    assert next_move not in ["left"]
+
+
 
 def test_edge_kill():
     # Avoid edge kill

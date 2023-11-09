@@ -102,7 +102,7 @@
 #             if sort_by_dist_to is not None:
 #                 head2 = self.all_snakes[sort_by_dist_to].head
 #                 possible_moves = sorted(possible_moves,
-#                                         key=lambda move2: self.board.closest_dist(head2, head.moved_to(move2)))
+#                                         key=lambda move2: self.board.shortest_dist(head2, head.moved_to(move2)))
 #             if sort_by_peripheral:
 #                 possible_moves = sorted(possible_moves,
 #                                         key=lambda move2: self.board.flood_fill(snake_id, confined_area=move2),
@@ -365,7 +365,7 @@
 #         if self.board.space_all <= 15:
 #             # Check if we're trapped along with another snake
 #             if len(self.board.touch_opps) > 0:
-#                 dist_to_trapped_opp, path_to_trapped_opp = self.board.dijkstra_shortest_dist(
+#                 dist_to_trapped_opp, path_to_trapped_opp = self.board.dijkstra_shortest_path(
 #                     self.you.head, self.board.touch_opps[0], get_path=True)
 #                 trapped_opp = self.board.identify_snake(self.board.touch_opps[0])
 #                 # We'll win the incoming collision if we're longer and colliding on the same square
@@ -397,11 +397,11 @@
 #                 openings_in_boundary = sorted(openings_in_boundary, key=lambda op: self.you.head.manhattan_dist(op))
 #             # Find the longest path to reach the opening (in case we're running out of space and need to stall)
 #             opening = openings_in_boundary[0]
-#             longest_path_till_opening = self.board.stall_path(self.you.head, opening)
+#             longest_path_till_opening = self.board.longest_path(self.you.head, opening)
 #             # If there's another trapped snake approaching us, see if we can reach the opening before a collision
 #             if collision_square is not None:
-#                 if (self.board.closest_dist(self.you.head, opening) <
-#                         self.board.closest_dist(self.you.head, Pos(collision_square[0],
+#                 if (self.board.shortest_dist(self.you.head, opening) <
+#                         self.board.shortest_dist(self.you.head, Pos(collision_square[0],
 #                                                                    collision_square[1]))):  # TODO make into a dict
 #                     trapped = True
 #             else:
@@ -453,7 +453,7 @@
 #         # We want to minimise available space for our opponents via flood fill (but only when there are fewer snakes in
 #         # our vicinity)
 #         dist_from_enemies = sorted(
-#             [self.board.closest_dist(self.you.head, opp.head) for opp in self.opponents.values()])
+#             [self.board.shortest_dist(self.you.head, opp.head) for opp in self.opponents.values()])
 #         djikstra_flag = sum([dist <= 3 for dist in dist_from_enemies]) >= 1
 #         dist_from_enemies_manhattan = sorted(
 #             [self.you.head.manhattan_dist(opp.head) for opp in self.opponents.values()])
@@ -461,7 +461,7 @@
 #         if len(self.opponents) <= 3 or djikstra_flag or manhattan_flag:
 #             self.peripheral_size = 4
 #             if djikstra_flag:
-#                 closest_enemy = sorted(self.opponents.keys(), key=lambda opp_id: self.board.closest_dist(self.you.head,
+#                 closest_enemy = sorted(self.opponents.keys(), key=lambda opp_id: self.board.shortest_dist(self.you.head,
 #                                                                                                          self.opponents[
 #                                                                                                              opp_id].head))[
 #                     0]
@@ -495,7 +495,7 @@
 #                 kill_bonus = 0
 #             if kill_bonus > 0:
 #                 # Reward getting closer, but only if it doesn't trap us
-#                 kill_bonus += (1000 / self.board.closest_dist(self.you.head, self.all_snakes[
+#                 kill_bonus += (1000 / self.board.shortest_dist(self.you.head, self.all_snakes[
 #                     closest_enemy].head) if not self.trapped else 0)
 #         else:
 #             available_enemy_space = -2
@@ -510,7 +510,7 @@
 #         # Get closer to enemy snakes if we're longer
 #         if 2 >= len(self.opponents) == sum([self.you.length >= s.length + 1 for s in self.opponents.values()]):
 #             dist_from_enemies = sorted(
-#                 [self.board.dijkstra_shortest_dist(self.you.head, opp.head) for opp in self.opponents.values()])
+#                 [self.board.dijkstra_shortest_path(self.you.head, opp.head) for opp in self.opponents.values()])
 #             dist_to_enemy = dist_from_enemies[0]
 #         else:
 #             dist_to_enemy = 0
@@ -522,7 +522,7 @@
 #             aggression_weight = 0
 #
 #         # If we're getting too close to enemy snakes that are longer, RETREAT
-#         threats = [self.board.dijkstra_shortest_dist(self.you.head, opp.head) for opp in self.opponents.values() if
+#         threats = [self.board.dijkstra_shortest_path(self.you.head, opp.head) for opp in self.opponents.values() if
 #                    opp.length > self.you.length and opp.head.within_bounds(
 #                        self.you.peripheral_vision(return_pos_only=True))]
 #         num_threats = (np.count_nonzero(np.array(threats) <= 2) * 2
@@ -530,7 +530,7 @@
 #
 #         collision_inbound = False
 #         me = self.get_obvious_moves(snake_id=self.you.id)
-#         closest_enemy = sorted(self.opponents.keys(), key=lambda opp_id: self.board.closest_dist(self.you.head,
+#         closest_enemy = sorted(self.opponents.keys(), key=lambda opp_id: self.board.shortest_dist(self.you.head,
 #                                                                                                  self.opponents[
 #                                                                                                      opp_id].head))[0]
 #         them = self.get_obvious_moves(snake_id=closest_enemy)
@@ -549,7 +549,7 @@
 #
 #         # Can we cut off our opponents?
 #         closest_opp = sorted(self.opponents.values(),
-#                              key=lambda opp: self.board.closest_dist(self.you.head, opp.head))[0]
+#                              key=lambda opp: self.board.shortest_dist(self.you.head, opp.head))[0]
 #         if self.you.head.within_bounds(closest_opp.peripheral_vision(return_pos_only=True)) and \
 #                 not closest_opp.head.within_bounds(
 #                     self.you.peripheral_vision(direction=self.you.facing_direction(), return_pos_only=True)) and \
@@ -577,7 +577,7 @@
 #                     space_penalty = -500
 #
 #         # Determine the closest safe distance to food
-#         dist_food, best_food = self.board.dist_to_nearest_food(self.you.id)
+#         dist_food, best_food = self.board.closest_dist_to_food(self.you.id)
 #         if best_food is not None:
 #             logging.info(f"Closest distance to food = {dist_food, best_food.as_dict()}")
 #         health_flag = True if self.you.health < 40 else False
@@ -617,7 +617,7 @@
 #         logging.info(f"Threats within 3 squares of us: {num_threats}")
 #         logging.info(f"Incoming collision penalty: {danger_penalty}")
 #         logging.info(f"Distance to nearest enemy: {dist_to_enemy}")
-#         logging.info(f"Actual dist: {self.board.closest_dist(self.you.head, self.all_snakes[closest_enemy].head)}")
+#         logging.info(f"Actual dist: {self.board.shortest_dist(self.you.head, self.all_snakes[closest_enemy].head)}")
 #         logging.info(f"Distance to nearest food: {dist_food}")
 #         logging.info(f"Layers deep in search tree: {layers_deep}")
 #         logging.info(f"Available enemy space: {available_enemy_space}")
@@ -676,7 +676,7 @@
 #                     # We'd prefer to get killed by a smaller snake in case we're the same length and can kill them too
 #                     killer_length = killer.length
 #                     # How likely is the killer going to deliver the coup de grâce? E.g. he could get distracted by food
-#                     distraction = self.board.dist_to_nearest_food(killer.id)[0]
+#                     distraction = self.board.closest_dist_to_food(killer.id)[0]
 #                     # Add a killer penalty score to give higher weight to more advantageous deaths
 #                     killer_penalty = -killer_length + (distraction if distraction <= 4 else 0)
 #                 heuristic = -1e6 + (self.minimax_search_depth - depth) + killer_penalty  # Reward slower deaths
@@ -775,7 +775,7 @@
 #                 opp_scores = []
 #                 for move in opp_moves:
 #                     moved_head = opp_snake.head.moved_to(move)
-#                     dist_from_us = self.board.closest_dist(self.you.head, moved_head)
+#                     dist_from_us = self.board.shortest_dist(self.you.head, moved_head)
 #                     opp_space = self.board.flood_fill(opp_id, risk_averse=False, confined_area=move)
 #                     opp_length = (1 / (opp_snake.length + (1 if moved_head in self.board.food else 0)))
 #                     opp_penalty = 100 if dist_from_us == 1 and opp_snake.length <= self.you.length else 0

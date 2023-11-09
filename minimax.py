@@ -301,7 +301,7 @@ class Battlesnake:
             dist_to_enemy = 0
 
         # Determine the closest safe distance to food
-        dist_food = self.dist_to_nearest_food()
+        dist_food = self.closest_dist_to_food()
 
         # Are we in the centre of the board? Maximise control
         centre = range(self.board_width // 2 - 2, self.board_width // 2 + 3)
@@ -384,7 +384,7 @@ class Battlesnake:
         filled = sum((row == "£").sum() for row in board)
         return filled - 1 if filled > 0 else filled  # Exclude the head, but cannot ever be negative
 
-    def dist_to_nearest_food(self):
+    def closest_dist_to_food(self):
         """Return the Manhattan distance to the nearest food for our snake"""
         best_dist = np.inf
         for food in self.food:

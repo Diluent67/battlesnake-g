@@ -6,6 +6,5 @@ game_state = {"game":{"id":"60e1b749-34f3-4558-9940-5a9f0e48a6cd","ruleset":{"na
 
 b = Battlesnake(game_state, debugging=True)
 clock_in = time.time_ns()
-print(b.optimal_move())
-total_time = round((time.time_ns() - clock_in) / 1000000, 3)
-print(total_time)
+print(f"\nBest move: {b.optimal_move()}")
+print(f"Total time: {round((time.time_ns() - clock_in) / 1000000, 3)}")
