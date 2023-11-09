@@ -399,7 +399,8 @@ class Board:
             Optionally, a list of other snakes whose heads our flood fill is touching
         """
         board = copy.deepcopy(self.board)
-        head = self.all_snakes[snake_id].head
+        snake = self.all_snakes[snake_id]
+        head = snake.head
         board[head.x, head.y] = "£"  # Representing our flood fill
 
         # See how flood fill changes when all snakes fast-forward X turns
@@ -409,78 +410,97 @@ class Board:
                 for rm in snake.body[remove_tail:]:
                     board[rm.x][rm.y] = " "
 
-        # Avoid any squares that our enemy can go to
+        # Avoid any squares that could lead to a losing head-to-head collision
         risky_squares = []
         if risk_averse:
-            threats = [other.head for other in self.all_snakes.values()
-                       if other.id != snake_id and other.length >= self.all_snakes[snake_id].length]
-            for threat in threats:
+            possible_threats = [opp.head for opp in self.all_snakes.values() if opp.id != snake_id and
+                                opp.length >= snake.length]
+            for threat in possible_threats:
                 for risky_pos in threat.adjacent_pos(self.width, self.height):
-                    if board[risky_pos.x][risky_pos.y] not in self.obstacles:  # Skip if it overlaps
+                    if board[risky_pos.x][risky_pos.y] not in self.obstacles:
                         board[risky_pos.x][risky_pos.y] = "?"
                         risky_squares.append(risky_pos)
 
+        # See what happens if an opponent were to keep moving forward and "cut off" our space
         if opp_cutoff:
-            head_cutoff = self.all_snakes[opp_cutoff].head.moved_to(self.all_snakes[opp_cutoff].facing_direction(), 1)
+            opp_snake = self.all_snakes[opp_cutoff]
+            opp_new_head = opp_snake.head.moved_to(opp_snake.facing_direction(), 1)
             moved_ahead = 1
-            while not self.is_pos_safe(head_cutoff, opp_cutoff, turn="basic")[1]:
-                board[head_cutoff.x][head_cutoff.y] = "x"
+            while not self.is_pos_safe(opp_new_head, opp_cutoff, turn="basic")[1]:
+                board[opp_new_head.x][opp_new_head.y] = "x"
+                opp_new_head = opp_new_head.moved_to(opp_snake.facing_direction(), 1)
                 moved_ahead += 1
-                head_cutoff = head_cutoff.moved_to(self.all_snakes[opp_cutoff].facing_direction(), 1)
 
         # Narrow down a portion of the board that represents the snake's peripheral vision
         if confined_area is not None:
-            pass
-            xs, ys, head = self.all_snakes[snake_id].peripheral_vision(confined_area, width=self.width, height=self.height)
+            xs, ys, new_head = snake.peripheral_vision(confined_area, width=self.width, height=self.height)
             board = board[xs[0]:xs[1], ys[0]:ys[1]]
+            # Account for the board change
+            if full_package:
+                shifted_risky_squares = []
+                for risky_pos in risky_squares:
+                    if risky_pos.within_bounds([xs, ys]):
+                        shift_x, shift_y = new_head.x - head.x, new_head.y - head.y
+                        new_risky_pos = Pos(risky_pos.x + shift_x, risky_pos.y + shift_y)
+                        shifted_risky_squares.append(new_risky_pos)
+                risky_squares = shifted_risky_squares
+            # Update our snake's head pointer to adjust to the cropped board
+            head = new_head
+
 
         def fill(x, y, board, initial_square, avoid_risk):
             if board.size == 0:  # Empty board
                 return
             if board[x][y] == self.obstacles[0]:  # Opponent snake heads
                 heads_in_contact.append(Pos(x, y))
-                boundary_pos.append(Pos(x, y))
+                boundaries.append(Pos(x, y))
                 return
             if board[x][y] in (self.obstacles if avoid_risk else self.obstacles[:-1]):  # Off-limit squares
-                boundary_pos.append(Pos(x, y))
+                boundaries.append(Pos(x, y))
                 return
             if board[x][y] in "£" and not initial_square:  # Already filled
                 return
-            
+
             board[x][y] = "£"
             neighbours = Pos(x, y).adjacent_pos(len(board), len(board[0]))
             for n in neighbours:
                 fill(n.x, n.y, board, initial_square=False, avoid_risk=avoid_risk)
 
-        boundary_pos = []
+        boundaries = []
         heads_in_contact = []
         fill(head.x, head.y, board, initial_square=True, avoid_risk=risk_averse)
         filled = sum((row == "£").sum() for row in board)
-        flood_fill = max(filled - 1, 1e-15)  # Exclude the head from the count, but cannot ever be negative
+        flood_fill_ra = max(filled - 1, 1e-15)  # Exclude the head from the count, but cannot ever be negative
 
         if full_package:
             # Repeat but assume all risky squares are fair game
             for risky_sq in risky_squares:
-                surr_risks = risky_sq.adjacent_pos(self.width, self.height)
+                # Situations where our snake's head was previously overwritten by a risky square
+                if risky_sq == head and board[risky_sq.x][risky_sq.y] != "£":
+                    board[risky_sq.x][risky_sq.y] = "£"
+                    fill(risky_sq.x, risky_sq.y, board, initial_square=True, avoid_risk=False)
                 # Ensure that the skipped square can be connected to the main flood fill
+                surr_risks = risky_sq.adjacent_pos(len(board), len(board[0]))
                 for surr_risk in surr_risks:
                     if board[surr_risk.x][surr_risk.y] == "£":
-                        if risky_sq in boundary_pos:
-                            boundary_pos = [pos for pos in boundary_pos if pos != risky_sq]
+                        # Remove from the list of boundary squares and update the fill
+                        if risky_sq in boundaries:
+                            boundaries = [pos for pos in boundaries if pos != risky_sq]
                         fill(risky_sq.x, risky_sq.y, board, initial_square=True, avoid_risk=False)
                         break
             filled = sum((row == "£").sum() for row in board)
             flood_fill_all = max(filled - 1, 1e-15)
 
         if get_boundaries:
-            return flood_fill, boundary_pos
+            return flood_fill_ra, boundaries
         elif get_touching_opps:
-            return flood_fill, heads_in_contact
+            return flood_fill_ra, heads_in_contact
         elif full_package:
-            self.space_ra = flood_fill
-            self.space_all = flood_fill_all
-            self.ff_bounds = set(boundary_pos)
-            self.touch_opps = list(set(heads_in_contact))
-            return flood_fill, flood_fill_all, set(boundary_pos), set(heads_in_contact)
+            if confined_area is None:
+                self.space_ra = flood_fill_ra
+                self.space_all = flood_fill_all
+                self.ff_bounds = list(set(boundaries))
+                self.touch_opps = list(set(heads_in_contact))
+            return flood_fill_ra, flood_fill_all, list(set(boundaries)), list(set(heads_in_contact))
         else:
-            return flood_fill
+            return flood_fill_ra

@@ -432,12 +432,11 @@ class Battlesnake:
         space_ra_weight = 1
 
         # How much space do we have in our peripheral?
-        peripheral_ra = self.board.flood_fill(self.you.id, risk_averse=True, confined_area="auto")
-        peripheral_all = self.board.flood_fill(self.you.id, risk_averse=False, confined_area="auto")
-        peripheral_all_weight = 2
+        # periph_ra = self.board.flood_fill(self.you.id, risk_averse=True, confined_area="auto")
+        # periph_all = self.board.flood_fill(self.you.id, risk_averse=False, confined_area="auto")
+        periph_ra, periph_all, _, _ = self.board.flood_fill(self.you.id, confined_area="auto", full_package=True)
+        periph_all_weight = 2
 
-        # _, _, _, _= self.board.flood_fill(self.you.id, confined_area="auto", full_package=True)
-        
         # How cramped on space are we? 
         space_penalty = 0
         if space_all <= 3:
@@ -514,7 +513,7 @@ class Battlesnake:
             available_enemy_space_ra = self.board.flood_fill(closest_enemy, risk_averse=True)
             available_enemy_space_all = self.board.flood_fill(closest_enemy, risk_averse=False)
 
-            if peripheral_ra > available_enemy_space or space_all > available_enemy_space_all:
+            if periph_ra > available_enemy_space or space_all > available_enemy_space_all:
                 if available_enemy_space_ra <= 5:
                     kill_bonus = 2000
 
@@ -630,8 +629,8 @@ class Battlesnake:
                         cutoff_bonus = 0
 
         length_weight = 1250
-        if space_penalty < 0:
-            length_weight = 100
+        # if space_penalty < 0:
+        #     length_weight = 100
 
 
 
@@ -646,10 +645,10 @@ class Battlesnake:
 
         if kill_bonus > 0:
             food_weight = 10
-            peripheral_all_weight = 0.5
+            periph_all_weight = 0.5
         # Get more aggressive if we're longer and there's only one snake left!
         if len(self.opponents) == 1 and longest_flag:
-            peripheral_all_weight = 0.5
+            periph_all_weight = 0.5
 
 
 
@@ -657,12 +656,12 @@ class Battlesnake:
         threat_proximity_weight = -25
 
         if len(threats) == 0 and kill_bonus == 0 and cutoff_bonus == 0 and not longest_flag:  # We're chilling tbh but need FOOD
-        #     peripheral_all_weight = 0.5
+        #     periph_all_weight = 0.5
             food_weight = 350
 
         logging.info(f"Available space: {space_ra}")
         logging.info(f"Space penalty: {space_penalty}")
-        logging.info(f"Available peripheral: {peripheral_all}")
+        logging.info(f"Available peripheral: {periph_all}")
         logging.info(f"Enemy length total: {tot_opp_length}")
         logging.info(f"Threats within 3 squares of us: {num_threats}")
         logging.info(f"Incoming collision penalty: {danger_penalty}")
@@ -677,7 +676,7 @@ class Battlesnake:
         logging.info(f"Length: {self.you.length}")
 
         h = (space_ra * space_ra_weight) + space_penalty + \
-            (peripheral_all_weight * peripheral_all) + \
+            (periph_all_weight * periph_all) + \
             (tot_opp_length_weight / (tot_opp_length + 1)) + \
             (threat_proximity_weight * num_threats) + danger_penalty + \
             (food_weight / (dist_food + 1)) + \
@@ -691,7 +690,7 @@ class Battlesnake:
         return h, {"Score": round(h, 2),
                    "Space | Pen": f"{space_ra} | {space_penalty} => {(space_ra * space_ra_weight) + space_penalty}",
                    "Centre | Edge": f"{in_centre * centre_control_weight} | {on_edge * -centre_control_weight}",
-                   "Periph": f"{peripheral_all} => {peripheral_all_weight * peripheral_all}",
+                   "Periph": f"{periph_all} => {periph_all_weight * periph_all}",
                    "Food | Opp Dist": f"{dist_food} {dist_to_enemy} | => {round(food_weight / (dist_food + 1), 2)} | {round((aggression_weight / (dist_to_enemy + 1)), 2)}",
                    "Opp Space | Len": f"{available_enemy_space} | {tot_opp_length} => {available_enemy_space} | {round(tot_opp_length_weight / (tot_opp_length + 1), 2)}",
                    "Danger | Kill | Cutoff": f"{danger_penalty} | {kill_bonus} | {cutoff_bonus}",

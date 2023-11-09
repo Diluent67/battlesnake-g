@@ -1,3 +1,43 @@
+"""
+board = copy.deepcopy(self.board)
+snake = self.all_snakes[snake_id]
+head = snake.head
+board[head.x, head.y] = "£"  # Representing our flood fill
+
+# See how flood fill changes when all snakes fast-forward X turns
+if fast_forward > 0:
+    for snake in self.all_snakes.values():
+        remove_tail = max(-snake.length + 1, -fast_forward)
+        for rm in snake.body[remove_tail:]:
+            board[rm.x][rm.y] = " "
+
+# Avoid any squares that could lead to a losing head-to-head collision
+risky_squares = []
+if risk_averse:
+    possible_threats = [opp.head for opp in self.all_snakes.values() if opp.id != snake_id and
+                        opp.length >= snake.length]
+    for threat in possible_threats:
+        for risky_pos in threat.adjacent_pos(self.width, self.height):
+            if board[risky_pos.x][risky_pos.y] not in self.obstacles:
+                board[risky_pos.x][risky_pos.y] = "?"
+                risky_squares.append(risky_pos)
+
+# See what happens if an opponent were to keep moving forward and "cut off" our space
+if opp_cutoff:
+    opp_snake = self.all_snakes[opp_cutoff]
+    opp_new_head = opp_snake.head.moved_to(opp_snake.facing_direction(), 1)
+    moved_ahead = 1
+    while self.is_pos_safe(opp_new_head, opp_cutoff, turn="basic")[1]:
+        board[opp_new_head.x][opp_new_head.y] = "x"
+        opp_new_head = opp_new_head.moved_to(opp_snake.facing_direction(), 1)
+        moved_ahead += 1
+
+# Narrow down a portion of the board that represents the snake's peripheral vision
+if confined_area is not None:
+    xs, ys, head = snake.peripheral_vision(confined_area, width=self.width, height=self.height)
+    board = board[xs[0]:xs[1], ys[0]:ys[1]]
+
+
 def update_board(self):
     """
     Fill in the board with the locations of all snakes. Our snake will be displayed like "00£" where "0" represents
