@@ -5,22 +5,11 @@ from typing import Optional, Union
 class Pos:
     def __init__(self, x: Union[int, dict], y: int = None):
         """An (x, y) position, with many helper methods"""
-        # Create from a dictionary with x and y keys, or as named parameters
-        if isinstance(x, dict):
-            if "x" not in x:
-                raise Exception("Pos constructor dict has no 'x' key")
-            elif "y" not in x:
-                raise Exception("Pos constructor dict has no 'y' key")
-            self.x = x["x"]
-            self.y = x["y"]
-        else:
-            if y is None:
-                raise Exception("Pos constructor: no y value")
-            self.x = x
-            self.y = y
+        self.x = x["x"]
+        self.y = x["y"]
 
     def __copy__(self):
-        return Pos(self.x, self.y)
+        return Pos({"x": self.x, "y": self.y})
 
     def __eq__(self, other):
         """Two points are equal if they have the same x and y"""
@@ -59,7 +48,7 @@ class Pos:
         else:
             raise Exception(f"Invalid direction: {direction}")
 
-        return Pos(x=next_x, y=next_y)
+        return Pos({"x": next_x, "y": next_y})
 
     def adjacent_pos(self, width, height):
         """Return a list of all bordering positions"""

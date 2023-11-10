@@ -228,11 +228,12 @@ class Board:
             
         return longest
 
-    def closest_dist_to_food(self, snake_id) -> tuple[int, Pos]:
+    def closest_dist_to_food(self, snake_id, risk_averse=True) -> tuple[int, Pos]:
         """
         Compute the shortest distance to food for a snake, but only if it's closer to it than an opponent snake
         
         :param snake_id: The ID of the desired snake we want to find food for
+        :param risk_averse: Avoid any food that an opponent snake is closer to
         
         :return: 
             The shortest distance to food
@@ -246,19 +247,20 @@ class Board:
         sorted_food = sorted(self.food, key=lambda f: you.head.manhattan_dist(f))  # Pre-sort for efficiency
         for food in sorted_food:
             dist_food = self.dijkstra_shortest_path(food, you.head)
-            # Find which opponents are equally close to the same food as us (use the Manhattan distance to estimate)
-            closest_opps = [opp for opp in opponents if opp.head.manhattan_dist(food) <= dist_food]
-            # Then double-check more accurately using Dijkstra's algorithm (to minimise Dijkstra function calls)
-            if len(closest_opps) == 0:
-                opp_dist_to_food = 1e6
-            else:
-                # If an enemy snake is longer than ours, and we're both 2 squares away from food, then they're 
-                # technically closer to it since they'd win the head-to-head battle
-                opp_dist_to_food = min(
-                    [self.dijkstra_shortest_path(food, snake.head) - 1 if snake.length >= you.length 
-                     else self.dijkstra_shortest_path(food, snake.head) 
-                     for snake in closest_opps]
-                )
+
+            opp_dist_to_food = 1e6
+            if risk_averse:
+                # Find which opponents are equally close to the same food as us (use the Manhattan distance to estimate)
+                closest_opps = [opp for opp in opponents if opp.head.manhattan_dist(food) <= dist_food]
+                # Then double-check more accurately using Dijkstra's algorithm (to minimise Dijkstra function calls)
+                if len(closest_opps) > 0:
+                    # If an enemy snake is longer than ours, and we're both 2 squares away from food, then they're
+                    # technically closer to it since they'd win the head-to-head battle
+                    opp_dist_to_food = min(
+                        [self.dijkstra_shortest_path(food, snake.head) - 1 if snake.length >= you.length
+                         else self.dijkstra_shortest_path(food, snake.head)
+                         for snake in closest_opps]
+                    )
             
             # Update the shortest distance
             if dist_food < best_dist and opp_dist_to_food >= dist_food:
@@ -370,6 +372,7 @@ class Board:
             snake_id: str,
             risk_averse: Optional[bool] = True,
             confined_area: Optional[str] = None,
+            confined_dist: Optional[int] = 3,
             fast_forward: Optional[int] = 0,
             opp_cutoff: Optional[str] = None,
             get_boundaries: Optional[bool] = False,
@@ -384,6 +387,7 @@ class Board:
         :param risk_averse: If True, flood fill will avoid any squares that directly border a longer opponent's head
         :param confined_area: Tells the function to do flood fill for only on one side of the snake (either "left",
             "right", "up", or "down") to represent its peripheral vision
+        :param confined_dist:
         :param fast_forward: Hypothetical scenarios where we want to see how much space we still have after moving
             X turns ahead. E.g. if we set it to 5, then we remove 5 squares from all snake's tails before doing flood
             fill - this is only useful when we suspect we'll be trapped by an opponent snake.
@@ -433,7 +437,8 @@ class Board:
 
         # Narrow down a portion of the board that represents the snake's peripheral vision
         if confined_area is not None:
-            xs, ys, new_head = snake.peripheral_vision(confined_area, width=self.width, height=self.height)
+            xs, ys, new_head = snake.peripheral_vision(
+                confined_area, dist=confined_dist, width=self.width, height=self.height)
             board = board[xs[0]:xs[1], ys[0]:ys[1]]
             # Account for the board change
             if full_package:
@@ -441,34 +446,35 @@ class Board:
                 for risky_pos in risky_squares:
                     if risky_pos.within_bounds([xs, ys]):
                         shift_x, shift_y = new_head.x - head.x, new_head.y - head.y
-                        new_risky_pos = Pos(risky_pos.x + shift_x, risky_pos.y + shift_y)
+                        new_risky_pos = Pos({"x": risky_pos.x + shift_x, "y": risky_pos.y + shift_y})
                         shifted_risky_squares.append(new_risky_pos)
                 risky_squares = shifted_risky_squares
             # Update our snake's head pointer to adjust to the cropped board
             head = new_head
 
 
-        def fill(x, y, board, initial_square, avoid_risk):
+        def fill(pos, board, initial_square, avoid_risk):
             if board.size == 0:  # Empty board
                 return
+            x, y = pos.x, pos.y
             if board[x][y] == self.obstacles[0]:  # Opponent snake heads
-                heads_in_contact.append(Pos(x, y))
-                boundaries.append(Pos(x, y))
+                heads_in_contact.append(pos)
+                boundaries.append(pos)
                 return
             if board[x][y] in (self.obstacles if avoid_risk else self.obstacles[:-1]):  # Off-limit squares
-                boundaries.append(Pos(x, y))
+                boundaries.append(pos)
                 return
             if board[x][y] in "£" and not initial_square:  # Already filled
                 return
 
             board[x][y] = "£"
-            neighbours = Pos(x, y).adjacent_pos(len(board), len(board[0]))
+            neighbours = pos.adjacent_pos(len(board), len(board[0]))
             for n in neighbours:
-                fill(n.x, n.y, board, initial_square=False, avoid_risk=avoid_risk)
+                fill(n, board, initial_square=False, avoid_risk=avoid_risk)
 
         boundaries = []
         heads_in_contact = []
-        fill(head.x, head.y, board, initial_square=True, avoid_risk=risk_averse)
+        fill(head, board, initial_square=True, avoid_risk=risk_averse)
         filled = sum((row == "£").sum() for row in board)
         flood_fill_ra = max(filled - 1, 1e-15)  # Exclude the head from the count, but cannot ever be negative
 
@@ -486,7 +492,7 @@ class Board:
                         # Remove from the list of boundary squares and update the fill
                         if risky_sq in boundaries:
                             boundaries = [pos for pos in boundaries if pos != risky_sq]
-                        fill(risky_sq.x, risky_sq.y, board, initial_square=True, avoid_risk=False)
+                        fill(risky_sq, board, initial_square=True, avoid_risk=False)
                         break
             filled = sum((row == "£").sum() for row in board)
             flood_fill_all = max(filled - 1, 1e-15)
@@ -501,6 +507,8 @@ class Board:
                 self.space_all = flood_fill_all
                 self.ff_bounds = list(set(boundaries))
                 self.touch_opps = list(set(heads_in_contact))
-            return flood_fill_ra, flood_fill_all, list(set(boundaries)), list(set(heads_in_contact))
+                return self.space_ra, self.space_all, self.ff_bounds, self.touch_opps
+            else:
+                return flood_fill_ra, flood_fill_all, list(set(boundaries)), list(set(heads_in_contact))
         else:
             return flood_fill_ra

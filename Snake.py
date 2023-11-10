@@ -78,6 +78,7 @@ class Snake:
         :param dist: How far our peripheral extends in any direction
         :param width: The width of the board
         :param height: The height of the board
+        :param return_pos_only:
 
         :return:
             [x1, x2] of a portion of the board that functions as the snake's peripheral vision
