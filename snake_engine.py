@@ -865,11 +865,13 @@ class Battlesnake:
                     moved_head = opp_snake.head.moved_to(move)
                     dist_from_us = self.board.shortest_dist(self.you.head, moved_head)
                     opp_space = self.board.flood_fill(opp_id, risk_averse=False, confined_area=move)
+                    opp_dist_to_food = min([1e6] + [moved_head.manhattan_dist(food) for food in self.board.food])
+                    our_dist_to_food, _ = self.board.closest_dist_to_food(self.you.id, risk_averse=False)
                     opp_aggression = (opp_snake.length > self.you.length and
-                                      moved_head.manhattan_dist(self.you.head) <= self.board.width // 2)
-                    opp_dist_to_food = [1e6] + [moved_head.manhattan_dist(food) for food in self.board.food]
-                    opp_food = 0 if min(opp_dist_to_food) >= 3 or opp_aggression \
-                        else -2 if min(opp_dist_to_food) == 2 else -5
+                                      (moved_head.manhattan_dist(self.you.head) <= self.board.width // 2 or
+                                      opp_dist_to_food * 3 < our_dist_to_food))
+                    opp_food = 0 if opp_dist_to_food >= 3 or opp_aggression \
+                        else -2 if opp_dist_to_food == 2 else -5
                     opp_penalty = 100 if dist_from_us == 1 and opp_snake.length <= self.you.length else 0
                     opp_scores.append(
                         (opp_id,

@@ -249,6 +249,7 @@ class Board:
             dist_food = self.dijkstra_shortest_path(food, you.head)
 
             opp_dist_to_food = 1e6
+            food_edge_killed = False
             if risk_averse:
                 # Find which opponents are equally close to the same food as us (use the Manhattan distance to estimate)
                 closest_opps = [opp for opp in opponents if opp.head.manhattan_dist(food) <= dist_food]
@@ -261,16 +262,36 @@ class Board:
                          else self.dijkstra_shortest_path(food, snake.head)
                          for snake in closest_opps]
                     )
+
+                # Avoid getting edge-killed as a result of getting the food TODO
+                if food.x in [0, self.width - 1] or food.y in [0, self.height - 1]:
+                    edge_kill_sqs = self.edge_kill_squares(food)
+                    for kill_sq in edge_kill_sqs:
+                        closest_edge_kill = [opp for opp in opponents if opp.length > you.length and
+                                             opp.head.manhattan_dist(kill_sq) <= dist_food - 1]
+                        if len(closest_edge_kill) > 0:
+                            food_edge_killed = True
+                            break
             
             # Update the shortest distance
-            if dist_food < best_dist and opp_dist_to_food >= dist_food:
+            if dist_food < best_dist and opp_dist_to_food >= dist_food and not food_edge_killed:
                 best_dist = dist_food
                 best_food = food
             # "Prune" on the first instance that we stop updating 
-            else:
+            elif best_food is not None:
                 break
                 
         return best_dist, best_food
+
+    def edge_kill_squares(self, pos):
+        if pos.x == 0:
+            return Pos({"x": pos.x + 1, "y": pos.y}), Pos({"x": pos.x + 2, "y": pos.y})
+        if pos.x == self.width - 1:
+            return Pos({"x": pos.x - 1, "y": pos.y}), Pos({"x": pos.x - 2, "y": pos.y})
+        if pos.y == 0:
+            return Pos({"x": pos.x, "y": pos.y + 1}), Pos({"x": pos.x, "y": pos.y + 2})
+        if pos.y == self.height - 1:
+            return Pos({"x": pos.x, "y": pos.y - 1}), Pos({"x": pos.x, "y": pos.y - 2})
 
     def is_pos_safe(
             self,
@@ -413,6 +434,10 @@ class Board:
                 remove_tail = max(-snake.length + 1, -fast_forward)
                 for rm in snake.body[remove_tail:]:
                     board[rm.x][rm.y] = " "
+
+        # Cases where our tail is directly adjacent to our head and in the way of our flood fill
+        if head.manhattan_dist(snake.tail) == 1:
+            board[snake.tail.x][snake.tail.y] = " "
 
         # Avoid any squares that could lead to a losing head-to-head collision
         risky_squares = []
