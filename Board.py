@@ -263,7 +263,8 @@ class Board:
                          for snake in closest_opps]
                     )
 
-                # Avoid getting edge-killed as a result of getting the food TODO
+                # TODO MAKE MORE ROBUST
+                # Avoid getting edge-killed as a result of getting the food
                 if food.x in [0, self.width - 1] or food.y in [0, self.height - 1]:
                     edge_kill_sqs = self.edge_kill_squares(food)
                     for kill_sq in edge_kill_sqs:

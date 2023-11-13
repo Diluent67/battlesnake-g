@@ -439,26 +439,32 @@ class Battlesnake:
         dist_food, best_food = self.board.closest_dist_to_food(self.you.id)
         if best_food is not None:
             logging.info(f"Closest distance to food = {dist_food, best_food.as_dict()}")
-        low_health_flag = True if self.you.health < 40 else False
-        shortest_flag = True if sum([self.you.length <= snake.length for snake in self.opponents.values()]) >= min(
-            [2, len(self.opponents)]) else False
-        longest_flag = True if sum([self.you.length > snake.length for snake in self.opponents.values()]) == len(
-            self.opponents) else False
-        food_weight = 250 if low_health_flag else 200 if shortest_flag else 25 if longest_flag else 300 / dist_food if dist_food <= 3 else 50
-
+        # Determine how important food is
+        opp_lengths = [opp.length for opp in self.opponents.values()]
+        longest_flag = False
+        if self.you.health < 40:  # Low health alert
+            food_weight = 250
+        elif self.you.length <= max(opp_lengths):  # If we're not the longest snake
+            food_weight = 200
+        elif self.you.length > max(opp_lengths):  # If we're the longest snake
+            food_weight = 25
+            longest_flag = True
+        elif dist_food <= 3:  # Guarantee eating food the closer we are to it
+            food_weight = 300 / dist_food
+        else:
+            food_weight = 50
 
         # How much space do we have in our peripheral?
-        # periph_ra = self.board.flood_fill(self.you.id, risk_averse=True, confined_area="auto")
-        # periph_all = self.board.flood_fill(self.you.id, risk_averse=False, confined_area="auto")
         periph_ra, periph_all, periph_bounds, _ = self.board.flood_fill(self.you.id, confined_area="auto", full_package=True)
         periph_all_weight = 2
 
         # Size of our peripheral
+        periph_penalty = 0
         next_moves = self.get_obvious_moves(snake_id=self.you.id, risk_averse=True)
         necessary_moves = self.you.head.direction_to(Pos({"x": self.board.width // 2, "y": self.board.height // 2}))
         xs, ys, _ = self.you.peripheral_vision("auto", dist=3, width=self.board.width, height=self.board.height)
-        periph_penalty = 0
-        if periph_all <= self.board.width // 2 and not (dist_food < 2 or self.og_length < self.you.length) and sum([n in necessary_moves for n in next_moves]) == 0:
+        if (periph_all <= self.board.width // 2 and not (dist_food < 2 or self.og_length < self.you.length) and
+                sum([n in necessary_moves for n in next_moves]) == 0):
             if xs[1] - xs[0] <= self.board.width // 3 or ys[1] - ys[0] <= self.board.height // 3:
                 periph_penalty = -100
 
@@ -497,12 +503,6 @@ class Battlesnake:
         #     next_moves_with_three_edges.append(with_three_edges)
         # if sum(next_moves_with_three_edges) == 0:
         #     corner_penalty = -500
-
-
-
-
-
-
 
         # We want to minimise available space for our opponents via flood fill (but only when there are fewer snakes in
         # our vicinity)
@@ -872,7 +872,7 @@ class Battlesnake:
                                       opp_dist_to_food * 3 < our_dist_to_food))
                     opp_food = 0 if opp_dist_to_food >= 3 or opp_aggression \
                         else -2 if opp_dist_to_food == 2 else -5
-                    opp_penalty = 100 if dist_from_us == 1 and opp_snake.length <= self.you.length else 0
+                    opp_penalty = 100 if dist_from_us == 1 and opp_snake.length < self.you.length else 0
                     opp_scores.append(
                         (opp_id,
                          dist_from_us + opp_food + opp_penalty + ((1 / opp_space) if opp_space >= 1 else 0))
