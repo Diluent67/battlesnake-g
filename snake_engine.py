@@ -793,7 +793,11 @@ class Battlesnake:
 
             clock_in = time.time_ns()
             # Determine our snake's possible moves, sorted by the amount of immediate space it'd give us
-            possible_moves = self.get_obvious_moves(self.you.id, risk_averse=False, sort_by_peripheral=True)
+            possible_moves = self.get_obvious_moves(self.you.id, risk_averse=self.you.length <= 5,
+                                                    sort_by_peripheral=True)
+            # In the early stages of the game, if we're out of risk-averse moves, accept risk
+            if len(possible_moves) == 0 and self.you.length <= 5:
+                possible_moves = self.get_obvious_moves(self.you.id, risk_averse=False, sort_by_peripheral=True)
             if len(possible_moves) == 0:  # RIP we're going to die
                 possible_moves = ["down"]
             logging.info(f"Our possible moves: {possible_moves}")
@@ -872,7 +876,7 @@ class Battlesnake:
                                       opp_dist_to_food * 3 < our_dist_to_food))
                     opp_food = 0 if opp_dist_to_food >= 3 or opp_aggression \
                         else -2 if opp_dist_to_food == 2 else -5
-                    opp_penalty = 100 if dist_from_us == 1 and opp_snake.length < self.you.length else 0
+                    opp_penalty = 100 if dist_from_us == 1 and opp_snake.length <= self.you.length else 0
                     opp_scores.append(
                         (opp_id,
                          dist_from_us + opp_food + opp_penalty + ((1 / opp_space) if opp_space >= 1 else 0))
