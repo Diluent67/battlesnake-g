@@ -504,6 +504,8 @@ class Battlesnake:
         # if sum(next_moves_with_three_edges) == 0:
         #     corner_penalty = -500
 
+        aggression_okay = self.you.length >= 6  # TODO BROKE EVERYTHING
+
         # We want to minimise available space for our opponents via flood fill (but only when there are fewer snakes in
         # our vicinity)
         dist_from_enemies = sorted(
@@ -564,10 +566,10 @@ class Battlesnake:
             available_enemy_space = -2
             kill_bonus = 0
 
-        # Did we kill any opponents previously?
+        # Did we kill any opponents previously?  # TODO NOT ROBUST ENOUGH
         if len(self.og_snakes) > len(self.all_snakes):
             dead_snakes = set(self.og_snakes.keys()) - set(self.all_snakes)
-            likely_kill = [self.you.head.manhattan_dist(self.og_snakes[opp_id].head) <= 4 for opp_id in dead_snakes]
+            likely_kill = [self.you.head.manhattan_dist(self.og_snakes[opp_id].head) <= 3 for opp_id in dead_snakes]
             kill_bonus += sum([kill * 10000 for kill in likely_kill])
 
         # Get closer to enemy snakes if we're longer
@@ -598,8 +600,6 @@ class Battlesnake:
                 len(self.opponents) <= 2 or num_threats == 0) and best_food is None
         # Are we on the edge? Try to stay away if possible
         on_edge = self.you.head.x in [0, self.board.width - 1] or self.you.head.y in [0, self.board.height - 1]
-
-
 
         collision_inbound = False
         me = self.get_obvious_moves(snake_id=self.you.id)
@@ -645,7 +645,6 @@ class Battlesnake:
             if cutoff_bonus > 0:
                 cutoff_bonus += (cutoff_bonus / (1 + cutting_off))
 
-
         # Can we get cut off?
         if len(self.opponents) == 1:
             us_cutoff = self.board.flood_fill(closest_opp.id, opp_cutoff=self.you.id)
@@ -665,16 +664,10 @@ class Battlesnake:
         # if space_penalty < 0:
         #     length_weight = 100
 
-
-
         # Heuristic formula
-
-        enemy_left_weight = 8 * 100000   #TODO test higher values
-
         enemy_restriction_weight = 0 if available_enemy_space == -2 else 75 if len(self.opponents) > 2 else 200
         if self.trapped or edge_killed:
             enemy_restriction_weight = 0
-
 
         if kill_bonus > 0:
             food_weight = 10
@@ -682,8 +675,6 @@ class Battlesnake:
         # Get more aggressive if we're longer and there's only one snake left!
         if len(self.opponents) == 1 and longest_flag:
             periph_all_weight = 0.5
-
-
 
         centre_control_weight = 20 if not (self.trapped or edge_killed) else 0
         threat_proximity_weight = -25
