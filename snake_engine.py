@@ -225,10 +225,10 @@ class Battlesnake:
                     new_game.all_snakes[snake_id].body += [new_game.all_snakes[snake_id].body[-1]]
                     # Remove the food from the board
                     new_game.board.food = [food for food in new_game.board.food if food != Pos(snake.food_eaten)]
-                    if snake_id == self.you.id:
-                        new_game.you.length += 1
-                        new_game.you.body += [new_game.you.body[-1]]
-                        new_game.you.health = 100
+                    # if snake_id == self.you.id:
+                    #     new_game.you.length += 1
+                    #     new_game.you.body += [new_game.you.body[-1]]
+                    #     new_game.you.health = 100
                     # Reset the food tracker
                     new_game.all_snakes[snake_id].food_eaten = None
 
@@ -499,7 +499,7 @@ class Battlesnake:
         # if sum(next_moves_with_three_edges) == 0:
         #     corner_penalty = -500
 
-        aggression_okay = self.you.length >= 6  # TODO BROKE EVERYTHING
+
 
         # We want to minimise available space for our opponents via flood fill (but only when there are fewer snakes in
         # our vicinity)
@@ -533,7 +533,11 @@ class Battlesnake:
             available_enemy_space_ra = self.board.flood_fill(closest_enemy, risk_averse=True)
             available_enemy_space_all = self.board.flood_fill(closest_enemy, risk_averse=False)
 
-            if periph_ra > available_enemy_space or space_all > available_enemy_space_all:
+            aggression_okay = self.you.length >= 6 or (self.you.length < 6 and
+                                                      ( self.all_snakes[closest_enemy].head.x in [0, 1, self.board.width - 2, self.board.width - 1] and
+                                                       self.all_snakes[closest_enemy].head.y in [0, 1, self.board.height - 2, self.board.height - 1])) # TODO BROKE EVERYTHING
+
+            if aggression_okay and ( periph_ra > available_enemy_space or space_all > available_enemy_space_all):
                 if available_enemy_space_ra <= 5:
                     kill_bonus = 2000
 
