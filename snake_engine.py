@@ -21,12 +21,14 @@ tree_nodes = []
 
 
 class Battlesnake:
-    def __init__(self, game_state: dict, debugging: Optional[bool] = False):
+    def __init__(self, game_state: dict, debugging: Optional[bool] = False, update_board: Optional[bool] = True):
         """
         Represents our Battlesnake game and includes all our decision-making methods
 
         :param game_state: The move API request (https://docs.battlesnake.com/api/example-move#move-api-response)
         :param debugging: Set to True if you want to view a log of what's happening behind the minimax algorithm
+        :param update_board: Skip generating the board visualisation e.g. in scenarios where snake locations still have
+            to be modified
         """
         # Process our snake using Rick's Snake class
         self.you = Snake(game_state["you"])
@@ -51,7 +53,7 @@ class Battlesnake:
 
         # General game data
         self.turn = game_state["turn"]
-        self.board = Board(game_state["board"], all_snakes=self.all_snakes)
+        self.board = Board(game_state["board"], all_snakes=self.all_snakes, update=update_board)
 
         # Finish up our constructor
         self.dict = game_state
@@ -170,16 +172,12 @@ class Battlesnake:
             if snake_id in move_dict:
                 # Update the head, body, and health of the snake to reflect the simulated move
                 new_head = snake.head.moved_to(move_dict[snake_id])
-                # Skip the snake if it died
-                valid_move, _ = self.board.is_pos_safe(new_head, snake_id,
-                                                       turn="ours" if not evaluate_deaths else "opponents")
                 new_head_dict = new_head.as_dict()
-                if valid_move:
-                    snake_dict["health"] = snake.health - 1
-                    snake_dict["body"] = [new_head_dict] + snake.body_dict[:-1]
-                    snake_dict["head"] = new_head_dict
-                    snake_dict["food_eaten"] = new_head_dict if new_head in self.board.food else None
-                    all_snakes.append(snake_dict)
+                snake_dict["health"] = snake.health - 1
+                snake_dict["body"] = [new_head_dict] + snake.body_dict[:-1]
+                snake_dict["head"] = new_head_dict
+                snake_dict["food_eaten"] = new_head_dict if new_head in self.board.food else None
+                all_snakes.append(snake_dict)
                 # Repeat for our snake's specific attributes
                 if snake_id == self.you.id:
                     you_dict["health"] = self.you.health - 1
@@ -198,53 +196,43 @@ class Battlesnake:
             "snakes": all_snakes
         }
 
-        # Check if any snakes died via head-to-head collisions and remove them from the game
-        if evaluate_deaths:
-            # First update snake lengths from any food eaten
-            for snake_num, snake_dict in enumerate(all_snakes):
-                if snake_dict["food_eaten"] is not None:
-                    all_snakes[snake_num]["length"] += 1
-                    all_snakes[snake_num]["health"] = 100
-                    all_snakes[snake_num]["body"] += [all_snakes[snake_num]["body"][-1]]
-                    board["food"] = [food for food in board["food"]  # Remove the food from the board
-                                     if not (food["x"] == snake_dict["food_eaten"]["x"]
-                                             and food["y"] == snake_dict["food_eaten"]["y"])]
-                    if snake_dict["id"] == self.you.id:
-                        you_dict["length"] += 1
-                        you_dict["body"] += [you_dict["body"][-1]]
-                        you_dict["health"] = 100
-                    # Reset the food tracker
-                    all_snakes[snake_num]["food_eaten"] = None
-
-            # Did any snakes die from head-to-head collisions?
-            all_heads = [(snake["head"]["x"], snake["head"]["y"]) for snake in all_snakes]
-            count_heads = Counter(all_heads)
-            butt_heads = [k for k, v in count_heads.items() if v > 1]  # Any square where > 1 heads collided
-            rm_snake_indices = []
-            for butt_head in butt_heads:
-                overlapping_snakes = np.array([  # Array of (id, length) for colliding snakes
-                    (snake["id"], snake["length"]) for snake in all_snakes
-                    if (snake["head"]["x"] == butt_head[0] and snake["head"]["y"] == butt_head[1])
-                ])
-                lengths = overlapping_snakes[:, 1].astype(int)
-                # If our snake died, don't remove it just yet
-                if not (self.you.id in overlapping_snakes[:, 0]):
-                    indices_largest_snakes = np.argwhere(lengths == lengths.max()).flatten().tolist()
-                    if len(indices_largest_snakes) > 1:  # No winner if the snakes are the same length
-                        winner_id = None
-                    else:
-                        winner_id = overlapping_snakes[:, 0][indices_largest_snakes[0]]
-                    # Remove any dead snakes
-                    for rm_id in overlapping_snakes[:, 0]:
-                        if rm_id != winner_id:  # Grab the snake index to remove later
-                            rm_snake_indices.extend([i for i in range(len(all_snakes)) if all_snakes[i]["id"] == rm_id])
-
-            for i in sorted(rm_snake_indices, reverse=True):
-                del all_snakes[i]
-
-        new_game = Battlesnake({"turn": self.turn, "board": board, "you": you_dict}, debugging=self.debugging)
+        new_game = Battlesnake(
+            game_state={"turn": self.turn, "board": board, "you": you_dict},
+            debugging=self.debugging,
+            update_board=False
+        )
         new_game.og_snakes = self.og_snakes
         new_game.og_length = self.og_length
+
+        # Check if any snakes died and remove them from the game
+        if evaluate_deaths:
+            rm_snake_indices = []
+            for snake_num, (snake_id, snake) in enumerate(new_game.all_snakes.items()):
+                valid_move, _ = new_game.board.is_pos_safe(snake.head, snake_id, turn="done")
+                if not valid_move:  # TODO any snake that died can technically be a free space
+                    rm_snake_indices.append(snake_id)
+                    break
+                # Update snake length from any food eaten
+                if snake.food_eaten is not None:
+                    new_game.all_snakes[snake_id].length += 1
+                    new_game.all_snakes[snake_id].health = 100
+                    new_game.all_snakes[snake_id].body += [new_game.all_snakes[snake_id].body[-1]]
+                    # Remove the food from the board
+                    new_game.board.food = [food for food in new_game.board.food if food != Pos(snake.food_eaten)]
+                    if snake_id == self.you.id:
+                        new_game.you.length += 1
+                        new_game.you.body += [new_game.you.body[-1]]
+                        new_game.you.health = 100
+                    # Reset the food tracker
+                    new_game.all_snakes[snake_id].food_eaten = None
+
+            for i in sorted(rm_snake_indices, reverse=True):
+                if i != self.you.id:
+                    new_game.all_snakes.pop(i, None)
+                    new_game.opponents.pop(i, None)
+                    # new_game.board.all_snakes.pop(i, None)
+
+        new_game.board.update_board()
         return new_game
 
     def edge_kill_detection(self, snake_id, us_killing: Optional[bool] = False) -> bool:

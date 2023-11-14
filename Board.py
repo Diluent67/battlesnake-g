@@ -8,13 +8,15 @@ from Snake import Snake
 
 
 class Board:
-    def __init__(self, board_dict: dict, all_snakes: Optional[dict[str, Snake]] = None):
+    def __init__(self, board_dict: dict, all_snakes: Optional[dict[str, Snake]] = None, update: Optional[bool] = True):
         """
         Represents our Battlesnake board in any given state. Provides visualisations useful for debugging and can
         perform flood fill.
 
         :param board_dict: The board portion of the move API request
         :param all_snakes: To avoid repeating code, input any previously loaded snakes
+        :param update: Skip generating the board visualisation with update_board() e.g. in scenarios where snake
+            locations still have to be modified
         """
         self.width = board_dict["width"]
         self.height = board_dict["height"]
@@ -28,7 +30,8 @@ class Board:
         self.board = np.full((self.width, self.height), " ")
         self.graph = nx.grid_2d_graph(self.width, self.height)
         self.obstacles = ["H"] + [str(num) for num in range(0, 9)] + ["x", "?"]
-        self.update_board()
+        if update:
+            self.update_board()
 
     def as_dict(self):
         d = dict()

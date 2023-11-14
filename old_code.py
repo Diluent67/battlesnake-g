@@ -203,3 +203,32 @@ def display_board(self, board: Optional[np.array] = None, return_string: Optiona
     #         return flood_fill, opp_heads_in_contact, boundary_pos
     #     else:
     #         return flood_fill
+
+
+
+# COLLISIONS
+    # # Did any snakes die from head-to-head collisions?
+    # all_heads = [(snake["head"]["x"], snake["head"]["y"]) for snake in all_snakes]
+    # count_heads = Counter(all_heads)
+    # butt_heads = [k for k, v in count_heads.items() if v > 1]  # Any square where > 1 heads collided
+    # rm_snake_indices = []
+    # for butt_head in butt_heads:
+    #     overlapping_snakes = np.array([  # Array of (id, length) for colliding snakes
+    #         (snake["id"], snake["length"]) for snake in all_snakes
+    #         if (snake["head"]["x"] == butt_head[0] and snake["head"]["y"] == butt_head[1])
+    #     ])
+    #     lengths = overlapping_snakes[:, 1].astype(int)
+    #     # If our snake died, don't remove it just yet
+    #     if not (self.you.id in overlapping_snakes[:, 0]):
+    #         indices_largest_snakes = np.argwhere(lengths == lengths.max()).flatten().tolist()
+    #         if len(indices_largest_snakes) > 1:  # No winner if the snakes are the same length
+    #             winner_id = None
+    #         else:
+    #             winner_id = overlapping_snakes[:, 0][indices_largest_snakes[0]]
+    #         # Remove any dead snakes
+    #         for rm_id in overlapping_snakes[:, 0]:
+    #             if rm_id != winner_id:  # Grab the snake index to remove later
+    #                 rm_snake_indices.extend([i for i in range(len(all_snakes)) if all_snakes[i]["id"] == rm_id])
+    #
+    # for i in sorted(rm_snake_indices, reverse=True):
+    #     del all_snakes[i]
