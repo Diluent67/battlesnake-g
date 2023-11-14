@@ -54,6 +54,7 @@ class Battlesnake:
         # General game data
         self.turn = game_state["turn"]
         self.board = Board(game_state["board"], all_snakes=self.all_snakes, update=update_board)
+        self.killed = 0  # Keep track of how many snakes we've killed
 
         # Finish up our constructor
         self.dict = game_state
@@ -203,14 +204,19 @@ class Battlesnake:
         )
         new_game.og_snakes = self.og_snakes
         new_game.og_length = self.og_length
+        new_game.killed = self.killed
 
         # Check if any snakes died and remove them from the game
+        our_kills = 0
         if evaluate_deaths:
             rm_snake_indices = []
             for snake_num, (snake_id, snake) in enumerate(new_game.all_snakes.items()):
                 valid_move, _ = new_game.board.is_pos_safe(snake.head, snake_id, turn="done")
                 if not valid_move:  # TODO any snake that died can technically be a free space
                     rm_snake_indices.append(snake_id)
+                    # Keep track if our snake was the killer
+                    if snake_id != self.you.id and (snake.head == new_game.you.head or snake.head.manhattan_dist(new_game.you.head) <= 2):
+                        our_kills += 1
                     break
                 # Update snake length from any food eaten
                 if snake.food_eaten is not None:
@@ -233,6 +239,7 @@ class Battlesnake:
                     # new_game.board.all_snakes.pop(i, None)
 
         new_game.board.update_board()
+        new_game.killed += our_kills
         return new_game
 
     def edge_kill_detection(self, snake_id, us_killing: Optional[bool] = False) -> bool:
@@ -555,10 +562,12 @@ class Battlesnake:
             kill_bonus = 0
 
         # Did we kill any opponents previously?  # TODO NOT ROBUST ENOUGH
-        if len(self.og_snakes) > len(self.all_snakes):
-            dead_snakes = set(self.og_snakes.keys()) - set(self.all_snakes)
-            likely_kill = [self.you.head.manhattan_dist(self.og_snakes[opp_id].head) <= 3 for opp_id in dead_snakes]
-            kill_bonus += sum([kill * 10000 for kill in likely_kill])
+        kill_bonus += 10000 * self.killed
+
+        # if len(self.og_snakes) > len(self.all_snakes):
+        #     dead_snakes = set(self.og_snakes.keys()) - set(self.all_snakes)
+        #     likely_kill = [self.you.head.manhattan_dist(self.og_snakes[opp_id].head) <= 3 for opp_id in dead_snakes]
+        #     kill_bonus += sum([kill * 10000 for kill in likely_kill])
 
         # Get closer to enemy snakes if we're longer
         if 2 >= len(self.opponents) == sum([self.you.length >= s.length + 1 for s in self.opponents.values()]):
