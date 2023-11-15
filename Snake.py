@@ -8,7 +8,7 @@ class Snake:
         Represents a snake in any given position, with useful methods that get information on the snake's direction, 
         peripheral, etc.
 
-        :param snake_dict: The all_snakes portion of the move API request
+        :param snake_dict: The "all_snakes" portion of the move API request
         """
         self.id = snake_dict["id"]
         self.name = snake_dict["name"]
@@ -49,6 +49,22 @@ class Snake:
     def pos_ahead(self):
         """Position in front of head"""
         return self.head.moved_to(self.facing_direction())
+
+    def make_move(self, direction, food_list, return_dict: Optional[bool] = True):
+        """Simulate a move in a given direction and log any food eaten"""
+        snake_dict = self.as_dict()
+        # Update the head, body, and health of the snake to reflect the simulated move
+        new_head = self.head.moved_to(direction)
+        new_head_dict = new_head.as_dict()
+        snake_dict["health"] = self.health - 1
+        snake_dict["body"] = [new_head_dict] + self.body_dict[:-1]
+        snake_dict["head"] = new_head_dict
+        snake_dict["food_eaten"] = new_head_dict if new_head in food_list else None
+
+        if return_dict:
+            return snake_dict
+        else:
+            return Snake(snake_dict)
 
     def peripheral_vision(
             self,
