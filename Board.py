@@ -509,7 +509,7 @@ class Board:
                 # Situations where our snake's head was previously overwritten by a risky square
                 if risky_sq == head and board[risky_sq.x][risky_sq.y] != "£":
                     board[risky_sq.x][risky_sq.y] = "£"
-                    fill(risky_sq.x, risky_sq.y, board, initial_square=True, avoid_risk=False)
+                    fill(risky_sq, board, initial_square=True, avoid_risk=False)
                 # Ensure that the skipped square can be connected to the main flood fill
                 surr_risks = risky_sq.adjacent_pos(len(board), len(board[0]))
                 for surr_risk in surr_risks:
