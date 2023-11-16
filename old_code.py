@@ -232,3 +232,36 @@ def display_board(self, board: Optional[np.array] = None, return_string: Optiona
     #
     # for i in sorted(rm_snake_indices, reverse=True):
     #     del all_snakes[i]
+
+
+    def is_game_over(self, for_snake_id: Optional[str] = None, depth: Optional[int] = 4) -> tuple[bool, bool]:
+        """
+        Determine if the game is over for our snake. Can optionally be used to determine whether any opponent snake is
+        dead or not.
+
+        :param for_snake_id: The ID of the desired snake we want to know died or not
+        :param depth: During minimax, things get complicated when we call this function right after making a move for
+            our snake, but before the opponent snakes have made moves. We only want to return True when a complete turn
+            is done (e.g. our snake made a move and our opponents did as well). Thus, we need the current depth that
+            minimax is on to determine this.
+
+        :return:
+            True if the overall game has a winner or if our snake is dead, False otherwise
+            True if the snake associated with the input snake ID is alive, False otherwise
+        """
+        # Skip if we're at the beginning of the game when all snakes are still coiled up
+        if self.turn == 0:
+            return False, True
+
+        snake_monitor = {}  # A dictionary for each snake showing whether they're alive
+        for snake_id, snake in self.all_snakes.items():
+            # Check that the snake is on a safe square (depending on if we're at a depth where only we've made a move)
+            is_safe, _ = self.board.is_pos_safe(snake.head, snake_id, turn="done" if depth % 2 == 0 else "ours")
+            snake_monitor[snake_id] = is_safe
+
+        # Game is over if there's only one snake remaining or if our snake died
+        game_over = True if (sum(snake_monitor.values()) == 1 or not snake_monitor[self.you.id]) else False
+        # See if a specific snake is alive or not
+        snake_still_alive = snake_monitor[for_snake_id if for_snake_id is not None else self.you.id]
+
+        return game_over, snake_still_alive

@@ -19,7 +19,7 @@ class Board:
         self.width = board_dict["width"]
         self.height = board_dict["height"]
         self.food = [Pos(xy) for xy in board_dict["food"]]
-        self.hazards = [Pos(xy) for xy in board_dict["hazards"]]
+        self.hazards = [Pos(xy) for xy in board_dict["hazards"]] if "hazards" in board_dict.keys() else []
         if all_snakes is None:
             all_snakes: dict[str, Snake] = {}
             for snake_dict in board_dict["snakes"]:
@@ -307,7 +307,7 @@ class Board:
         :param pos: Any location on the board as a Pos object e.g. Pos({"x": 5, "y": 10})
         :param snake_id: The ID of the desired snake we're evaluating a move for
         :param turn: Either "ours", "opponents", "done", or "basic". Addresses nuances with running this function during
-            the minimax algorithm or outside of it.
+            the minimax algorithm or independently.
             - If "ours", this means we're at a depth where our snake has to make a move.
             - If "opponents", then we're at a depth where we've made a move but the opponent snakes haven't.
             - If "done", then both our snake and the opponents' have made moves (and 1 full turn has been completed).
@@ -392,7 +392,7 @@ class Board:
             self,
             snake_id: str,
             risk_averse: Optional[bool] = True,
-            confined_area: Optional[str] = None,
+            confine_to: Optional[str] = None,
             confined_dist: Optional[int] = 3,
             fast_forward: Optional[int] = 0,
             opp_cutoff: Optional[str] = None,
@@ -406,7 +406,7 @@ class Board:
 
         :param snake_id: The ID of the desired snake we want to do flood fill for
         :param risk_averse: If True, flood fill will avoid any squares that directly border a longer opponent's head
-        :param confined_area: Tells the function to do flood fill for only on one side of the snake (either "left",
+        :param confine_to: Tells the function to do flood fill for only on one side of the snake (either "left",
             "right", "up", or "down") to represent its peripheral vision
         :param confined_dist:
         :param fast_forward: Hypothetical scenarios where we want to see how much space we still have after moving
@@ -461,9 +461,9 @@ class Board:
                 moved_ahead += 1
 
         # Narrow down a portion of the board that represents the snake's peripheral vision
-        if confined_area is not None:
+        if confine_to is not None:
             xs, ys, new_head = snake.peripheral_vision(
-                confined_area, dist=confined_dist, width=self.width, height=self.height)
+                confine_to, dist=confined_dist, width=self.width, height=self.height)
             board = board[xs[0]:xs[1], ys[0]:ys[1]]
             # Account for the board change
             if full_package:
@@ -527,7 +527,7 @@ class Board:
         elif get_touching_opps:
             return flood_fill_ra, heads_in_contact
         elif full_package:
-            if confined_area is None:
+            if confine_to is None:
                 self.space_ra = flood_fill_ra
                 self.space_all = flood_fill_all
                 self.ff_bounds = list(set(boundaries))

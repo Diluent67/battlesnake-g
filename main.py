@@ -45,7 +45,6 @@ def move(game_state: typing.Dict) -> typing.Dict:
     """
     game = Battlesnake(game_state)
     optimal_move = game.optimal_move()
-    print(f"MOVE {game_state['turn']}: {optimal_move}")
     return {"move": optimal_move}
 
 

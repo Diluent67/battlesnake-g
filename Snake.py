@@ -13,15 +13,14 @@ class Snake:
         self.id = snake_dict["id"]
         self.name = snake_dict["name"]
         self.health = snake_dict["health"]
-        self.body = []
-        for seg in snake_dict["body"]:
-            self.body.append(Pos(seg))
+        self.body = [Pos(seg) for seg in snake_dict["body"]]
         self.body_dict = [pos.as_dict() for pos in self.body]
         self.head = Pos(snake_dict["head"])
         self.length = snake_dict["length"]
         self.tail = self.body[-1]
-        # Additional "food_eaten" attribute to log if a snake's on a square with food
-        self.food_eaten = snake_dict["food_eaten"] if "food_eaten" in snake_dict.keys() else None
+        self.food_eaten = Pos(snake_dict["food_eaten"]) if (  # If a snake's on a square with food
+                "food_eaten" in snake_dict.keys() and snake_dict["food_eaten"] is not None) else None
+        self.dead = False
 
     def as_dict(self):
         d = {
@@ -31,7 +30,7 @@ class Snake:
             "body": self.body_dict,
             "head": self.head.as_dict(),
             "length": self.length,
-            "food_eaten": self.food_eaten
+            "food_eaten": self.food_eaten.as_dict() if self.food_eaten is not None else None
         }
         return d
 
@@ -65,6 +64,13 @@ class Snake:
             return snake_dict
         else:
             return Snake(snake_dict)
+
+    def ate_food(self):
+        """Update the snake's attributes if it ate food"""
+        self.length += 1
+        self.health = 100
+        self.body += [self.body[-1]]
+        self.food_eaten = None
 
     def peripheral_vision(
             self,
