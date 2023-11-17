@@ -140,7 +140,7 @@ class Board:
             closest += start.manhattan_dist(end)
         return closest
 
-    def dijkstra_shortest_path(self, start: Pos, end: Pos, get_path: Optional[bool] = False) -> int | tuple[int, list]:
+    def dijkstra_shortest_path(self, start: Pos, end: Pos, from_snake: Optional[str] = None, get_path: Optional[bool] = False) -> int | tuple[int, list]:
         """
         Return the shortest path between two positions using Dijkstra's algorithm implemented in networkx
 
@@ -152,7 +152,14 @@ class Board:
         """
         start = start.as_tuple()
         end = end.as_tuple()
-        temp_graph, temp_added_nodes = self.check_missing_nodes(self.graph, [start, end])
+        check_nodes = [start, end]
+        # Cases where our tail is directly adjacent to our head and in the way of our graph
+        if from_snake is not None:
+            our_snake = self.all_snakes[from_snake]
+            if our_snake.head.manhattan_dist(our_snake.tail) == 1:
+                check_nodes.append(our_snake.tail.as_tuple())
+        # Add in missing nodes
+        temp_graph, temp_added_nodes = self.check_missing_nodes(self.graph, check_nodes)
 
         # Run networkx's Dijkstra method (it'll error out if no path is possible)
         try:

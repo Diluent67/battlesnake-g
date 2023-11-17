@@ -212,7 +212,7 @@ class Battlesnake:
         # Check if we're trapped along with another snake
         if len(self.board.touch_opps) > 0:
             dist_to_trapped_opp, path_to_trapped_opp = self.board.dijkstra_shortest_path(
-                self.you.head, self.board.touch_opps[0], get_path=True)
+                self.you.head, self.board.touch_opps[0], from_snake=self.you.id, get_path=True)
             trapped_opp = self.board.identify_snake(self.board.touch_opps[0])
             # We'll win the incoming collision if we're longer and colliding on the same square
             if dist_to_trapped_opp % 2 == 1 and self.you.length > trapped_opp.length:
@@ -386,8 +386,10 @@ class Battlesnake:
         incr_length_weight = 1250
 
         # Did any opponent snakes die or increase in length? (Higher opponent total => worse for us)
-        tot_opp_length = sum([opp.length for opp in self.opponents.values()])
-        tot_opp_length_weight = 25
+        leftover_opps = [opp for opp in self.opponents.values() if self.board.flood_fill(
+            opp.id, risk_averse=True, confine_to="auto") >= 3]
+        tot_opp_length = sum([opp.length for opp in leftover_opps])
+        tot_opp_length_weight = 25 if len(leftover_opps) == len(self.opponents) else 500
 
         # How much space do we have?
         space_ra, space_all, ff_bounds, touch_opps = self.board.flood_fill(self.you.id, full_package=True)
