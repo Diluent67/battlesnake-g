@@ -207,12 +207,13 @@ class Board:
                         G.add_edge(node, e)
         return G, added_nodes
 
-    def longest_path(self, start: Pos, end: Pos) -> int:
+    def longest_path(self, start: Pos, end: Pos, threshold: Optional[int] = 0) -> tuple[int, int]:
         """
         Return the longest path between two positions (relevant during an effort to stall)
 
         :param start: A location on the board as a Pos object e.g. Pos({"x": 5, "y": 10})
         :param end: A different location on the board
+        :param threshold:
 
         :return: The longest distance between the start and end inputs. 1e6 if no path could be found
         """
@@ -220,19 +221,26 @@ class Board:
         end = end.as_tuple()
         temp_graph, temp_added_nodes = self.check_missing_nodes(self.graph, [start, end])
 
+        longest = 1e6
+        shortest = 1e6
         # Get all possible paths and filter for the longest one
-        find_longest = [path for path in nx.all_simple_paths(temp_graph, start, end)]
-        if len(find_longest) > 0:
-            longest_path = max(find_longest, key=lambda path: len(path))
+        possible_paths = [path for path in nx.all_simple_paths(temp_graph, start, end)]
+        if len(possible_paths) > 0:
+            longest_path = max(possible_paths, key=lambda path: len(path))
             longest = len(longest_path) - 1
-        else:
-            longest = 1e6
+            # Now filter for the shortest path longer than the desired threshold
+            shortest = longest
+            if threshold > 0:
+                paths_above_threshold = [path for path in possible_paths if len(path) > threshold]
+                if len(paths_above_threshold) > 0:
+                    shortest_path = min(paths_above_threshold, key=lambda path: len(path))
+                    shortest = len(shortest_path) - 1
 
         # Remove any temporary nodes that were previously added
         for temp_nodes in temp_added_nodes:
             temp_graph.remove_node(temp_nodes)
             
-        return longest
+        return longest, shortest
 
     def closest_dist_to_food(self, snake_id, risk_averse=True) -> tuple[int, Pos]:
         """
@@ -374,7 +382,7 @@ class Board:
                     # Flag a move as risky if it could lead to a losing head-to-head collision
                     elif (snake_id != opp_id  # Skip the same snake we're evaluating
                           and length <= opp_snake.length  # Only if the other snake is the same length or longer
-                          and pos.manhattan_dist(opp_snake.head) == 2):  # Only if we're collision-bound
+                          and pos.manhattan_dist(opp_snake.head) == 1):  # Only if we're collision-bound
                         risky_flag = True
 
             elif turn == "done":
@@ -394,6 +402,15 @@ class Board:
                     risky_flag = True
 
         return True, risky_flag
+
+    def remove_snake(self, snake_ids: list):
+        for snake_id in snake_ids:
+            snake = self.all_snakes[snake_id]
+            for rm in snake.body:
+                self.board[rm.x][rm.y] = " "
+            temp_graph, _ = self.check_missing_nodes(self.graph, [pos.as_tuple() for pos in snake.body])
+            self.all_snakes.pop(snake_id)
+
 
     def flood_fill(
             self,

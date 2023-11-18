@@ -128,7 +128,7 @@ class Battlesnake:
             moveset.append(moveset.pop(moveset.index(risky_move)))
 
         if both_risk_options:
-            return moveset, moveset_ra
+            return moveset_ra if len(moveset_ra) > 0 else moveset
         else:
             return moveset_ra if risk_averse else moveset
 
@@ -201,22 +201,26 @@ class Battlesnake:
         new_game.board.update_board()
         return new_game
 
-    def trap_detection(self) -> bool:
+    def trap_detection(self) -> tuple[bool, float | None]:
         """
         Determine if our snake is trapped based on its possible escape routes
 
-        :return: True if our snake's trapped, False otherwise
+        :return:
+            True if our snake's trapped, False otherwise
+            A heuristic to inform how dangerous our potential escape route would be
         """
         trapped = False
-        collision_sq = None
+        esc_penalty = None
+
         # Check if we're trapped along with another snake
+        collision_sq = None
         if len(self.board.touch_opps) > 0:
             dist_to_trapped_opp, path_to_trapped_opp = self.board.dijkstra_shortest_path(
                 self.you.head, self.board.touch_opps[0], from_snake=self.you.id, get_path=True)
             trapped_opp = self.board.identify_snake(self.board.touch_opps[0])
             # We'll win the incoming collision if we're longer and colliding on the same square
             if dist_to_trapped_opp % 2 == 1 and self.you.length > trapped_opp.length:
-                return False
+                return False, None
             collision_sq = path_to_trapped_opp[len(path_to_trapped_opp) // 2]
 
         # If space frees up after X moves, identify where the opening in our flood fill is
@@ -241,10 +245,20 @@ class Battlesnake:
             # If there are multiple openings, select the one closest to our snake
             openings_in_boundary = sorted(openings_in_boundary, key=lambda op: self.you.head.manhattan_dist(op))
             opening = openings_in_boundary[0]
-            longest_path_till_opening = self.board.longest_path(self.you.head, opening)
+            longest_path_to_opening, shortest_path_to_opening = self.board.longest_path(
+                self.you.head, opening, threshold=moves_until_opening)
+
             # See if we can successfully stall until the opening forms
             if collision_sq is None:
-                trapped = longest_path_till_opening < moves_until_opening
+                trapped = longest_path_to_opening < moves_until_opening
+                # If we found an opening, consider whether there's an opponent snake waiting for us there
+                if not trapped:
+                    snakes_near = [opp for opp in self.opponents.values() if (
+                            opp.head.manhattan_dist(opening) <= shortest_path_to_opening)]
+                    # Give more weight to enemy snakes that can kill us
+                    threats_near = [opp for opp in snakes_near if opp.length >= self.you.length]
+                    # Our escape heuristic penalises longer escape routes and routes with a possible opponent waiting
+                    esc_penalty = -(shortest_path_to_opening + 5 * len(snakes_near) + 10 * len(threats_near))
             # If there's another trapped snake approaching us, see if we can reach the opening before a collision
             elif self.board.shortest_dist(self.you.head, opening) >= self.board.shortest_dist(
                     self.you.head, Pos({"x": collision_sq[0], "y": collision_sq[1]})):
@@ -252,7 +266,7 @@ class Battlesnake:
         else:
             trapped = True
 
-        return trapped
+        return trapped, esc_penalty
 
     def edge_kill_detection(self, snake_id) -> bool:
         """
@@ -387,9 +401,18 @@ class Battlesnake:
 
         # Did any opponent snakes die or increase in length? (Higher opponent total => worse for us)
         leftover_opps = [opp for opp in self.opponents.values() if self.board.flood_fill(
-            opp.id, risk_averse=True, confine_to="auto") >= 3]
+            opp.id, risk_averse=False, confine_to="auto") >= 3]
         tot_opp_length = sum([opp.length for opp in leftover_opps])
         tot_opp_length_weight = 25 if len(leftover_opps) == len(self.opponents) else 500
+
+        # Remove other snakes that we're not edge-killing who's def dead
+        if len(self.opponents) >= 2:
+            basically_dead_opps = [opp.id for opp in self.opponents.values() if self.board.flood_fill(
+                opp.id, risk_averse=False, confine_to="auto") < 1 and self.you.head.manhattan_dist(opp.head) >= 5]
+            self.board.remove_snake(basically_dead_opps)
+            for dead_opp in basically_dead_opps:
+                # self.all_snakes.pop(dead_opp)
+                self.opponents.pop(dead_opp)
 
         # How much space do we have?
         space_ra, space_all, ff_bounds, touch_opps = self.board.flood_fill(self.you.id, full_package=True)
@@ -412,7 +435,10 @@ class Battlesnake:
             food_weight = 200
         elif self.you.length > max(opp_lengths):  # If we are the longest snake
             longest_flag = True
-            if dist_food < min(dist_from_enemies):  # Might as well get food if convenient
+            if self.you.length > max(opp_lengths) + 10:
+                food_weight = 1
+                incr_length_weight = 1
+            elif dist_food < min(dist_from_enemies):  # Might as well get food if convenient
                 food_weight = 100
             else:  # Food isn't that important at the moment
                 food_weight = 25
@@ -446,9 +472,11 @@ class Battlesnake:
 
         # Are we trapped? (With no incoming opponents trapped with us)
         if space_all <= 15:
-            self.trapped = self.trap_detection()
+            self.trapped, esc_penalty = self.trap_detection()
             # Penalise entrapment (-1e7) more than getting killed by an opponent (-1e6)
             space_penalty = -1e7 if self.trapped and len(touch_opps) == 0 else space_penalty
+            space_penalty += esc_penalty if not self.trapped and esc_penalty is not None else 0
+            periph_all_weight = 0.5
         else:
             self.trapped = False
 
@@ -619,7 +647,7 @@ class Battlesnake:
 
 
         # Can we get cut off?
-        if len(self.opponents) == 1:
+        if len(self.opponents) <= 2:
             us_cutoff = self.board.flood_fill(closest_opp.id, opp_cutoff=self.you.id)
             opp_cutoff = self.board.flood_fill(self.you.id, opp_cutoff=closest_opp.id)
             if self.you.length < closest_opp.length:
@@ -645,6 +673,10 @@ class Battlesnake:
         if self.trapped or edge_killed:
             enemy_restriction_weight = 0
 
+        if dist_to_enemy >= self.board.width * 2:  # Enemy is wayyy too far away for it to matter
+            enemy_restriction_weight = 0
+
+
         if kill_bonus > 0:
             food_weight = 10
             periph_all_weight = 0.5
@@ -653,6 +685,9 @@ class Battlesnake:
             periph_all_weight = 0.5
 
         centre_control_weight = 20 if not (self.trapped or edge_killed) else 0
+        on_edge_penalty = -20 if not (self.trapped or edge_killed) else 0
+        # if sum([n in necessary_moves for n in next_moves]) < len(necessary_moves):  # Don't penalise being on the edge if we've no other choice
+        #     on_edge_penalty = 0
         threat_proximity_weight = -25
 
         if len(threats) == 0 and kill_bonus == 0 and cutoff_bonus == 0:
@@ -672,14 +707,14 @@ class Battlesnake:
             (current_depth * current_depth_weight) + \
             (incr_length * incr_length_weight) + \
             in_centre * centre_control_weight + \
-            on_edge * -centre_control_weight + \
+            on_edge * on_edge_penalty + \
             aggression_weight / (dist_to_enemy + 1) + cutoff_bonus + \
             (enemy_restriction_weight / (available_enemy_space + 1)) + kill_bonus
 
         h_dict = {
             "Heuristic": round(h, 2),
-            "Space | Pen": f"{space_ra} | {space_penalty} => {(space_ra * space_ra_weight) + space_penalty}",
-            "Centre | Edge": f"{in_centre * centre_control_weight} | {on_edge * -centre_control_weight}",
+            "Space | Pen": f"{space_ra} | {round(space_penalty, 2)} => {round((space_ra * space_ra_weight) + space_penalty, 2)}",
+            "Centre | Edge": f"{in_centre * centre_control_weight} | {on_edge * on_edge_penalty}",
             "Periph | Pen": f"{periph_all} | {periph_penalty} => {periph_all_weight * periph_all + periph_penalty}",
             "Food | Opp Dist": f"{dist_food} {dist_to_enemy} | => {round(food_weight / (dist_food + 1), 2)} | {round((aggression_weight / (dist_to_enemy + 1)), 2)}",
             "Opp Space | Len": f"{available_enemy_space} | {tot_opp_length} => {round((enemy_restriction_weight / (available_enemy_space + 1)), 2)} | {round(tot_opp_length_weight / (tot_opp_length + 1), 2)}",
@@ -811,7 +846,7 @@ class Battlesnake:
             opps_moves: dict[str, list] = {}  # Store possible moves for each opponent by their snake ID
             opps_scores: list[tuple[str, float]] = []  # Estimate the quality of the move with a simple heuristic
             for opp_num, (opp_id, opp_snake) in enumerate(self.opponents.items()):
-                opp_moves = self.get_moveset(opp_id, risk_averse=False)
+                opp_moves = self.get_moveset(opp_id, both_risk_options=True)
                 if len(opp_moves) == 0:  # If the opponent has no legal moves, move down and die
                     opp_moves = ["down"]
                 # Assume our opponents are smart - for each possible move, compute how beneficial it'd be for them
@@ -830,11 +865,13 @@ class Battlesnake:
                         else -2 if opp_dist_to_food == 2 else -5
                     opp_penalty = 100 if dist_from_us == 1 and opp_snake.length <= self.you.length else 0
                     aggressor = dist_from_us / 3 if not opp_aggression else dist_from_us
+                    if dist_from_us >= 8 and moved_head.manhattan_dist(self.you.head) >= 7 and len(self.opponents) > 1:
+                        aggressor *= 2
                     opp_scores.append(
                         (opp_id,
                          aggressor + opp_food + opp_penalty + ((10 / opp_space) if opp_space >= 1 else 0))
                     )
-                    # print(f"Dist: {aggressor}, Food: {opp_food}, Space: {round(((10 / opp_space) if opp_space >= 1 else 0), 2)}, Pen: {opp_penalty})")
+                    # print(f"Dist: {dist_from_us}, Aggro: {aggressor}, Food: {opp_food}, Space: {round(((10 / opp_space) if opp_space >= 1 else 0), 2)}, Pen: {opp_penalty})")
                 # Sort the opponent moveset by the computed heuristics
                 opp_moves = [x for _, x in sorted(zip([s[1] for s in opp_scores], opp_moves))]
                 opp_scores = sorted(opp_scores, key=lambda sc: sc[1])
