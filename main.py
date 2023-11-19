@@ -23,7 +23,7 @@ def info() -> typing.Dict:
         "author": "G",
         "color": "#1F51FF",
         "head": "evil",
-        "tail": "weight",
+        "tail": "tiger-tail",
     }
 
 

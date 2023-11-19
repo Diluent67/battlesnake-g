@@ -529,16 +529,15 @@ class Board:
             # Update our snake's head pointer to adjust to the cropped board
             head = new_head
 
-        def fill(pos, board, initial_square, avoid_risk):
+        def fill(x, y, board, initial_square, avoid_risk):
             if board.size == 0:  # Empty board
                 return
-            x, y = pos.x, pos.y
             if board[x][y] == self.obstacles[0]:  # Opponent snake heads
-                heads_in_contact.append(pos)
-                boundaries.append(pos)
+                heads_in_contact.append(Pos({"x": x, "y": y}))
+                boundaries.append(Pos({"x": x, "y": y}))
                 return
             if board[x][y] in (self.obstacles if avoid_risk else self.obstacles[:-1]):  # Off-limit squares
-                boundaries.append(pos)
+                boundaries.append(Pos({"x": x, "y": y}))
                 return
             if board[x][y] in "£" and not initial_square:  # Already filled
                 return
@@ -549,19 +548,19 @@ class Board:
             #     fill(n, board, initial_square=False, avoid_risk=avoid_risk)
             avoid_sq = [(x - 1, y), (x + 1, y), (x, y - 1), (x, y + 1)]
             for n in avoid_sq:
-                if not (n[0] == pos.x and n[1] == pos.y) and (0 <= n[0] < len(board) and 0 <= n[1] < len(board[0])):
-                    fill(Pos({"x": n[0], "y": n[1]}), board, initial_square=False, avoid_risk=avoid_risk)
+                if not (n[0] == x and n[1] == y) and (0 <= n[0] < len(board) and 0 <= n[1] < len(board[0])):
+                    fill(n[0], n[1], board, initial_square=False, avoid_risk=avoid_risk)
 
         boundaries = []
         heads_in_contact = []
         if ff_split:
-            fill(head.moved_to("left"), board, initial_square=False, avoid_risk=risk_averse)
+            fill(head.moved_to("left").x, head.moved_to("left").y, board, initial_square=False, avoid_risk=risk_averse)
             left_filled = sum((row == "£").sum() for row in board)
-            fill(head.moved_to("right"), board, initial_square=False, avoid_risk=risk_averse)
+            fill(head.moved_to("right").x, head.moved_to("right").y, board, initial_square=False, avoid_risk=risk_averse)
             right_filled = sum((row == "£").sum() for row in board) - left_filled + 1
             flood_fill_ra = max(left_filled - 1, 1e-15) if left_filled > right_filled else max(right_filled - 1, 1e-15)
         else:
-            fill(head, board, initial_square=True, avoid_risk=risk_averse)
+            fill(head.x, head.y, board, initial_square=True, avoid_risk=risk_averse)
             filled = sum((row == "£").sum() for row in board)
             flood_fill_ra = max(filled - 1, 1e-15)  # Exclude the head from the count, but cannot ever be negative
 
@@ -579,7 +578,7 @@ class Board:
                         # Remove from the list of boundary squares and update the fill
                         if risky_sq in boundaries:
                             boundaries = [pos for pos in boundaries if pos != risky_sq]
-                        fill(risky_sq, board, initial_square=True, avoid_risk=False)
+                        fill(risky_sq.x, risky_sq.y, board, initial_square=True, avoid_risk=False)
                         break
             filled = sum((row == "£").sum() for row in board)
             flood_fill_all = max(filled - 1, 1e-15)
