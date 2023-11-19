@@ -27,7 +27,6 @@ class Board:
         self.all_snakes = all_snakes
         self.board = np.full((self.width, self.height), " ")
         if previous_graph is None:
-            print("AAAAAA")
             self.graph = nx.grid_2d_graph(self.width, self.height)
         else:
             self.graph = previous_graph
@@ -63,6 +62,15 @@ class Board:
                 # that coincide with the position of our head
                 if change_graph:  #  and not (snake_num == 0 and num == 0)
                     self.graph.remove_nodes_from([pos.as_tuple()])
+
+    def whiteout(self, crop_centre):
+        min_x, max_x = max(0, crop_centre.x - 9), min(self.width - 1, crop_centre.x + 9)
+        min_y, max_y = max(0, crop_centre.y - 9), min(self.height - 1, crop_centre.y + 9)
+        for i in range(0, self.width):
+            for j in range(0, self.height):
+                if not (min_x <= i <= max_x and min_y <= j <= max_y):
+                    self.board[i, j] = "x"
+        return
 
     def display_graph(self, show=True):
         g = np.full((self.width, self.height), " ")

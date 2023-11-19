@@ -477,6 +477,7 @@ class Battlesnake:
         next_moves = self.get_moveset(snake_id=self.you.id, risk_averse=True)
         ff_split =  set(next_moves) == {"left", "right"}
         # How much space do we have?
+        self.board.whiteout(crop_centre=self.you.head)
         space_ra, space_all, ff_bounds, touch_opps = self.board.flood_fill(self.you.id, full_package=True, ff_split=ff_split)
         space_ra_weight = 1
 
