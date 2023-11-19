@@ -62,7 +62,6 @@ class Battlesnake:
         self.kill_count = [] if kill_count is None else kill_count
         self.killer_intel = None  # Info on which snake we got killed by
 
-
         # Finish up our constructor
         self.dict = game_state
         self.minimax_search_depth = 4  # Depth for minimax algorithm
@@ -451,16 +450,18 @@ class Battlesnake:
         incr_length = self.you.length - self.og_length
         incr_length_weight = 1250
 
+        opp_periphs = {}
+        for opp_id in self.opponents.keys():
+            opp_periphs[opp_id] = self.board.flood_fill(opp_id, risk_averse=False, confine_to="auto")
+
         # Did any opponent snakes die or increase in length? (Higher opponent total => worse for us)
-        leftover_opps = [opp for opp in self.opponents.values() if self.board.flood_fill(
-            opp.id, risk_averse=False, confine_to="auto") >= 3]
+        leftover_opps = [opp for opp in self.opponents.values() if opp_periphs[opp.id] >= 3]
         tot_opp_length = sum([opp.length for opp in leftover_opps])
         tot_opp_length_weight = 25 if len(leftover_opps) == len(self.opponents) else 500
 
         # Remove other snakes that we're not edge-killing who's def dead
         if len(self.opponents) >= 2:
-            basically_dead_opps = [opp.id for opp in self.opponents.values() if self.board.flood_fill(
-                opp.id, risk_averse=False, confine_to="auto") < 1 and self.you.head.manhattan_dist(opp.head) >= 5]
+            basically_dead_opps = [opp.id for opp in self.opponents.values() if opp_periphs[opp.id] < 1 and self.you.head.manhattan_dist(opp.head) >= 5]
             self.board.remove_snake(basically_dead_opps)
             for dead_opp in basically_dead_opps:
                 # self.all_snakes.pop(dead_opp)
@@ -658,29 +659,29 @@ class Battlesnake:
 
         collision_inbound = False
         me = self.get_moveset(snake_id=self.you.id)
-        closest_enemy = sorted(self.opponents.keys(), key=lambda opp_id: self.board.shortest_dist(self.you.head,
-                                                                                                 self.opponents[
-                                                                                                     opp_id].head))[0]
-        them = self.get_moveset(snake_id=closest_enemy)
-        diff_lengths = self.all_snakes[closest_enemy].length - self.you.length
+        closest_opp = sorted(self.opponents.values(),
+                             key=lambda opp: self.board.shortest_dist(self.you.head, opp.head))[0]
+
+        them = self.get_moveset(snake_id=closest_opp.id)
+        diff_lengths = closest_opp.length - self.you.length
         if diff_lengths > 0:
-            connection = self.all_snakes[closest_enemy].head.direction_to(self.you.head)
+            connection = closest_opp.head.direction_to(self.you.head)
             # This means they're headed towards us
-            if self.all_snakes[closest_enemy].facing_direction() in connection:
+            if closest_opp.facing_direction() in connection:
                 # If we have no choice but to head towards the opponent as well  (e.g. if the enemy is heading up and left, we have no choice but to move down or right)
                 if sum([esc in me for esc in connection]) == 0:  # TODO code flood fill for the esc direction in case they're trapping us
                     collision_inbound = True
         if collision_inbound:
-            danger_penalty = -15 * diff_lengths - 15/self.you.head.manhattan_dist(self.all_snakes[closest_enemy].head)
+            danger_penalty = -15 * diff_lengths - 15/self.you.head.manhattan_dist(closest_opp.head)
         else:
             danger_penalty = 0
 
         # Can we cut off our opponents?
-        closest_opp = sorted(self.opponents.values(),
-                             key=lambda opp: self.board.shortest_dist(self.you.head, opp.head))[0]
+
 
         # TODO corner edge case
         cutoff_bonus = 0
+        cutting_off = None
         if kill_bonus >= 2000:
             cutoff_bonus = kill_bonus
         elif (self.you.head.within_bounds(closest_opp.peripheral_vision(return_pos_only=True)) and
@@ -704,9 +705,18 @@ class Battlesnake:
         # Can we get cut off?
         opps_nearby = [opp for opp in self.opponents.values() if self.you.head.manhattan_dist(opp.head) <= 4]
         if 0 < len(opps_nearby) <= 2 or len(self.opponents) == 1:
+            # if cutting_off is not None:
+            #     us_cutoff = cutting_off
+            # else:
+            #     us_cutoff = self.board.flood_fill(closest_opp.id, opp_cutoff=self.you.id)
+            # opp_cutoff = self.board.flood_fill(self.you.id, opp_cutoff=closest_opp.id)
+
             if len(self.opponents) == 1:
-                us_cutoff = self.board.flood_fill(closest_enemy, opp_cutoff=self.you.id)
-                opp_cutoff = self.board.flood_fill(self.you.id, opp_cutoff=closest_enemy)
+                if cutting_off is not None:
+                    us_cutoff = cutting_off
+                else:
+                    us_cutoff = self.board.flood_fill(closest_opp.id, opp_cutoff=self.you.id)
+                opp_cutoff = self.board.flood_fill(self.you.id, opp_cutoff=closest_opp.id)
             else:
                 us_cutoff = self.board.flood_fill(opps_nearby[0].id, opp_cutoff=self.you.id)
                 opp_cutoff = self.board.flood_fill(self.you.id, opp_cutoff=opps_nearby[0].id)
@@ -756,7 +766,7 @@ class Battlesnake:
             if not longest_flag:  # We're chilling tbh but need FOOD
                 food_weight = 350
             else:  # compete for food
-                opp_dist_food, opp_best_food = self.board.closest_dist_to_food(closest_enemy, risk_averse=False)
+                opp_dist_food, opp_best_food = self.board.closest_dist_to_food(closest_opp.id, risk_averse=False)
                 if len(self.opponents) == 1 and best_food is not None and opp_best_food is not None:
                     if opp_best_food == best_food and opp_dist_food <= dist_food + 2:
                         food_weight = 250

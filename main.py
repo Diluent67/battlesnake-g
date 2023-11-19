@@ -6,6 +6,7 @@
 #  |________/(______/__|  |__| |____/\_____>______>___|__(______/__|__\\_____>
 #
 
+import time
 import typing
 from snake_engine import Battlesnake
 
@@ -43,9 +44,11 @@ def move(game_state: typing.Dict) -> typing.Dict:
     Valid moves are "up", "down", "left", or "right"
     See https://docs.battlesnake.com/api/example-move for available data
     """
+    clock_in = time.time_ns()
     game = Battlesnake(game_state)
-    print(game_state["you"]["latency"])
     optimal_move = game.optimal_move()
+    print(f"Took {round((time.time_ns() - clock_in) / 1000000, 3)} ms")
+    print(f'Latency: {game_state["you"]["latency"]}')
     return {"move": optimal_move}
 
 

@@ -428,6 +428,22 @@ class Board:
             # temp_graph, _ = self.check_missing_nodes(self.graph, [pos.as_tuple() for pos in snake.body])
             self.all_snakes.pop(snake_id)
 
+    def flood_fill_database(
+            self,
+            initialise: Optional[bool] = False,
+            add: Optional[bool] = False,
+            check: Optional[bool] = False
+    ):
+        if initialise:
+            ff_db = {}
+            for snake in self.all_snakes.values():
+                ff_db[snake.id] = {"full_package": [], "confine_to": [], }
+        if add:
+            pass
+        if check:
+            pass
+
+
     def flood_fill(
             self,
             snake_id: str,
@@ -537,11 +553,12 @@ class Board:
             #     fill(n, board, initial_square=False, avoid_risk=avoid_risk)
             avoid_sq = [(x - 1, y), (x + 1, y), (x, y - 1), (x, y + 1)]
             for n in avoid_sq:
-                if not (n[0] == x and n[1] == y) and (0 <= n[0] < len(board) and 0 <= n[1] < len(board[0])):
+                if not (n[0] == x and n[1] == y) and (0 <= n[0] < board_width and 0 <= n[1] < board_height):
                     fill(n[0], n[1], board, initial_square=False, avoid_risk=avoid_risk)
 
         boundaries = []
         heads_in_contact = []
+        board_width, board_height = len(board), len(board[0])
         if ff_split:
             fill(head.moved_to("left").x, head.moved_to("left").y, board, initial_square=False, avoid_risk=risk_averse)
             left_filled = sum((row == "£").sum() for row in board)
