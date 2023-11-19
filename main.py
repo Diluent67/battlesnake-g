@@ -44,6 +44,7 @@ def move(game_state: typing.Dict) -> typing.Dict:
     See https://docs.battlesnake.com/api/example-move for available data
     """
     game = Battlesnake(game_state)
+    print(game_state["you"]["latency"])
     optimal_move = game.optimal_move()
     return {"move": optimal_move}
 
