@@ -25,7 +25,8 @@ class Battlesnake:
             game_state: dict,
             debugging: Optional[bool] = False,
             og_length: Optional[bool] = None,
-            kill_count: Optional[list] = None
+            kill_count: Optional[list] = None,
+            previous_graph: Optional[dict] = None
     ):
         """
         Represents our Battlesnake game and includes all our decision-making methods
@@ -53,7 +54,7 @@ class Battlesnake:
         self.opponents.pop(self.you.id)
 
         # Populate our Battlesnake board
-        self.board = Board(game_state["board"], all_snakes=self.all_snakes)
+        self.board = Board(game_state["board"], all_snakes=self.all_snakes, previous_graph=previous_graph)
 
         # General game data
         self.turn = game_state["turn"]
@@ -132,7 +133,7 @@ class Battlesnake:
         else:
             return moveset_ra if risk_averse else moveset
 
-    def simulate_move(self, move_dict: dict, evaluate_deaths: Optional[bool] = False, depth: Optional[int] = 4) -> Battlesnake:
+    def simulate_move(self, move_dict: dict, evaluate_deaths: Optional[bool] = False, depth: Optional[int] = 4) -> tuple[Battlesnake, dict[str, list]]:
         """
         Create a new Battlesnake instance to simulate a game turn and make moves for a set of desired snakes. To improve
         speed, this function builds a new "game_state" dictionary from scratch to avoid affecting the original instance.
@@ -146,9 +147,11 @@ class Battlesnake:
         you_dict = self.you.as_dict()
         # Loop through all snakes and simulate a move if provided
         all_snakes: list[dict] = []
+        board_changes = {"add": [], "remove": []}
         for snake_id, snake in self.all_snakes.items():
             if snake_id in move_dict:
-                new_snake_dict = snake.make_move(move_dict[snake_id], food_list=self.board.food, return_dict=True)
+                new_snake_dict = snake.make_move(move_dict[snake_id], food_list=self.board.food, return_dict=True,
+                                                 board_changes=board_changes)
                 all_snakes.append(new_snake_dict)
                 # Repeat for our snake's specific attributes
                 if snake_id == self.you.id:
@@ -168,7 +171,8 @@ class Battlesnake:
             game_state={"turn": self.turn, "board": board, "you": you_dict},
             debugging=self.debugging,
             og_length=self.og_length,
-            kill_count=self.kill_count.copy()
+            kill_count=self.kill_count.copy(),
+            previous_graph=self.board.graph
         )
 
         # Check if any snakes died as a result of the simulation
@@ -195,11 +199,15 @@ class Battlesnake:
             # Remove dead snakes from the game except for our own (since all Battlesnake games need a "you" field)
             rm_ids = [rm_id for rm_id, rm_snake in new_game.opponents.items() if rm_snake.dead]
             for rm_id in rm_ids:
+                for pos in new_game.all_snakes[rm_id].body:
+                    board_changes["remove"].append(pos.as_tuple())
                 new_game.all_snakes.pop(rm_id, None)
                 new_game.opponents.pop(rm_id, None)
 
-        new_game.board.update_board()
-        return new_game
+        board_changes["remove"] = [rm for rm in board_changes["remove"] if rm not in board_changes["add"]]
+
+        new_game.board.update_board(change_graph=False)
+        return new_game, board_changes
 
     def trap_detection(self) -> tuple[bool, float | None]:
         """
@@ -858,7 +866,8 @@ class Battlesnake:
             best_score, best_move, best_node_data, best_edge = -np.inf, None, None, None
             # Each child node will be a new board simulating a possible move
             for num, move in enumerate(possible_moves):
-                simulation = self.simulate_move({self.you.id: move})
+                simulation, you_movements = self.simulate_move({self.you.id: move})
+                # print(you_movements)
                 logging.info(f"Visiting {num + 1} of {len(possible_moves)} child nodes: {move}")
                 if self.debugging:
                     logging.info(simulation.board.display(show=False))
@@ -869,7 +878,10 @@ class Battlesnake:
                 edge_added = self.update_tree_graphic(add_edges=True, depth=depth - 1)
                 # Run minimax on the new simulated board
                 clock_in2 = time.time_ns()
+                simulation.board.graph_simulation(you_movements)
+                logging.info(simulation.board.display_graph(show=False))
                 node_score, node_move, node_data = simulation.minimax(depth - 1, alpha, beta, False)
+                simulation.board.graph_simulation(you_movements, undo=True)
                 # Update the node we just added with text to display some heuristic information for debugging
                 self.update_tree_graphic(add_nodes=True, depth=depth - 1, node_data=node_data, insert_at=node_added)
 
@@ -996,8 +1008,9 @@ class Battlesnake:
                 if move_combo in sim_movesets:
                     continue
                 # Now simulate a board with the newly created opponent moveset combo!
-                simulation = self.simulate_move(move_combo, evaluate_deaths=True, depth=depth)
-                sim_move_combos.append(simulation)
+                simulation, opp_movements = self.simulate_move(move_combo, evaluate_deaths=True, depth=depth)
+                # print(opp_movements)
+                sim_move_combos.append((simulation, opp_movements))
                 sim_movesets.append(move_combo)
 
             # Rewrite the move combinations into a user-friendly form for debugging
@@ -1013,7 +1026,7 @@ class Battlesnake:
             clock_in = time.time_ns()
             best_score, best_move, best_node_data, best_edge = np.inf, None, None, None
             # Each child node will be a new board simulating a possible opponent move combination
-            for num, simulation in enumerate(sim_move_combos):
+            for num, (simulation, opp_movement) in enumerate(sim_move_combos):
                 logging.info(f"Visiting {num + 1} of {len(sim_move_combos)} child nodes: {sim_movesets[num]}")
                 if self.debugging:
                     logging.info(simulation.board.display(show=False))
@@ -1024,7 +1037,10 @@ class Battlesnake:
                 edge_added = self.update_tree_graphic(add_edges=True, depth=depth - 1)
                 # Run minimax on the new simulated board
                 clock_in2 = time.time_ns()
+                simulation.board.graph_simulation(opp_movement)
+                logging.info(simulation.board.display_graph(show=False))
                 node_score, node_move, node_data = simulation.minimax(depth - 1, alpha, beta, True)
+                simulation.board.graph_simulation(opp_movement, undo=True)
                 # Update the node we just added with text to display some heuristic information for debugging
                 self.update_tree_graphic(add_nodes=True, depth=depth - 1, node_data=node_data, insert_at=node_added)
 
@@ -1060,7 +1076,7 @@ class Battlesnake:
         logging.info("STARTING POSITION")
         self.board.update_board()
         logging.info(self.board.display(show=False))
-
+        logging.info(self.board.display_graph(show=False))
         tree_tracker[depth].append(0)  # Add our initial node
         _, best_move, _ = self.minimax(depth=depth, alpha=-np.inf, beta=np.inf, maximising_snake=True)
 

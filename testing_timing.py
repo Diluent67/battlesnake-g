@@ -18,3 +18,4 @@ for i in range(6):
         if e in G.nodes:
             G.add_edge(i, e)
 print(f"Done in {round((time.time_ns() - clock_in) / 1000000, 3)} ms")
+

@@ -62,7 +62,8 @@ class Snake:
 
         if board_changes is not None:
             board_changes["add"].append(new_head.as_tuple())
-            board_changes["remove"].append(self.body[-1].as_tuple())
+            if sum([pos == self.body[-1] for pos in self.body]) == 1:
+                board_changes["remove"].append(self.body[-1].as_tuple())
 
         if return_dict:
             return snake_dict

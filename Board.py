@@ -8,7 +8,7 @@ from Snake import Snake
 
 
 class Board:
-    def __init__(self, board_dict: dict, all_snakes: Optional[dict[str, Snake]] = None):
+    def __init__(self, board_dict: dict, all_snakes: Optional[dict[str, Snake]] = None, previous_graph=None):
         """
         Represents our Battlesnake board in any given state. Provides visualisations useful for debugging and can
         perform flood fill.
@@ -26,7 +26,10 @@ class Board:
                 all_snakes[snake_dict["id"]] = Snake(snake_dict)
         self.all_snakes = all_snakes
         self.board = np.full((self.width, self.height), " ")
-        self.graph = nx.grid_2d_graph(self.width, self.height)
+        if previous_graph is None:
+            self.graph = nx.grid_2d_graph(self.width, self.height)
+        else:
+            self.graph = previous_graph
         self.obstacles = ["H"] + [str(num) for num in range(0, 9)] + ["x", "?"]
 
     def as_dict(self):
@@ -38,7 +41,7 @@ class Board:
         d["snakes"] = [snake.as_dict() for snake in self.all_snakes.values()]
         return d
 
-    def update_board(self):
+    def update_board(self, change_graph: Optional[bool] = True):
         """
         Fill in the board with the locations of all snakes. Our snake will be displayed like "00H" where "0" represents
         the body and "H" represents the head. Opponents will be displayed as "11H", "22H", "33H", etc. Also update the
@@ -57,8 +60,15 @@ class Board:
                 self.board[pos.x, pos.y] = "H" if num == 0 else str(snake_num)
                 # Remove nodes on the graph occupied by opponent snakes since they shouldn't be reached, but keep any
                 # that coincide with the position of our head
-                if not (snake_num == 0 and num == 0):
+                if change_graph:  #  and not (snake_num == 0 and num == 0)
                     self.graph.remove_nodes_from([pos.as_tuple()])
+
+    def display_graph(self, show=True):
+        g = np.full((self.width, self.height), " ")
+        nodes = self.graph.nodes
+        for node in nodes:
+            g[node[0]][node[1]] = "x"
+        self.display(board=g, show=show)
 
     def display(
             self,
@@ -140,7 +150,8 @@ class Board:
             closest += start.manhattan_dist(end)
         return closest
 
-    def dijkstra_shortest_path(self, start: Pos, end: Pos, from_snake: Optional[str] = None, get_path: Optional[bool] = False) -> int | tuple[int, list]:
+    def dijkstra_shortest_path(self, start: Pos, end: Pos, from_snake: Optional[str] = None,
+                               get_path: Optional[bool] = False) -> int | tuple[int, list]:
         """
         Return the shortest path between two positions using Dijkstra's algorithm implemented in networkx
 
@@ -177,6 +188,25 @@ class Board:
             return shortest, path
         else:
             return shortest
+
+    def graph_simulation(self, movements, undo: Optional[bool] = False):
+        # print(movements)
+        if not undo:
+            if (8,3) in movements["add"]:
+                h = 0
+            self.check_missing_nodes(self.graph, movements["remove"])
+            self.graph.remove_nodes_from(movements["add"])
+            for added in movements["remove"]:
+                assert added in self.graph.nodes
+            for removed in movements["add"]:
+                assert removed not in self.graph.nodes
+        else:
+            self.check_missing_nodes(self.graph, movements["add"])
+            self.graph.remove_nodes_from(movements["remove"])
+            for added in movements["add"]:
+                assert added in self.graph.nodes
+            for removed in movements["remove"]:
+                assert removed not in self.graph.nodes
 
     @staticmethod
     def check_missing_nodes(G: nx.Graph, nodes: list[tuple]) -> tuple[nx.Graph, list]:
@@ -239,23 +269,23 @@ class Board:
         # Remove any temporary nodes that were previously added
         for temp_nodes in temp_added_nodes:
             temp_graph.remove_node(temp_nodes)
-            
+
         return longest, shortest
 
     def closest_dist_to_food(self, snake_id, risk_averse=True) -> tuple[int, Pos]:
         """
         Compute the shortest distance to food for a snake, but only if it's closer to it than an opponent snake
-        
+
         :param snake_id: The ID of the desired snake we want to find food for
         :param risk_averse: Avoid any food that an opponent snake is closer to
-        
-        :return: 
+
+        :return:
             The shortest distance to food
             The location of the food as a Pos object
         """
         you = self.all_snakes[snake_id]
         opponents = [snake for snake in self.all_snakes.values() if snake.id != snake_id]
-        
+
         best_dist = np.inf
         best_food = None
         sorted_food = sorted(self.food, key=lambda f: you.head.manhattan_dist(f))  # Pre-sort for efficiency
@@ -287,15 +317,15 @@ class Board:
                         if len(closest_edge_kill) > 0:
                             food_edge_killed = True
                             break
-            
+
             # Update the shortest distance
             if dist_food < best_dist and opp_dist_to_food >= dist_food and not food_edge_killed:
                 best_dist = dist_food
                 best_food = food
-            # "Prune" on the first instance that we stop updating 
+            # "Prune" on the first instance that we stop updating
             elif best_food is not None:
                 break
-                
+
         return best_dist, best_food
 
     def edge_kill_squares(self, pos):
@@ -408,9 +438,8 @@ class Board:
             snake = self.all_snakes[snake_id]
             for rm in snake.body:
                 self.board[rm.x][rm.y] = " "
-            temp_graph, _ = self.check_missing_nodes(self.graph, [pos.as_tuple() for pos in snake.body])
+            # temp_graph, _ = self.check_missing_nodes(self.graph, [pos.as_tuple() for pos in snake.body])
             self.all_snakes.pop(snake_id)
-
 
     def flood_fill(
             self,
@@ -501,7 +530,6 @@ class Board:
                 risky_squares = shifted_risky_squares
             # Update our snake's head pointer to adjust to the cropped board
             head = new_head
-
 
         def fill(pos, board, initial_square, avoid_risk):
             if board.size == 0:  # Empty board
