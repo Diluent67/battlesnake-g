@@ -585,12 +585,8 @@ class Battlesnake:
             else:
                 confine_to = "auto"
 
-            decide_risk = True if self.you.length > self.all_snakes[closest_enemy].length else False
-
-            # enemy_space_ra, enemy_space_all, _, _ = self.board.flood_fill(closest_enemy, full_package=True)
+            available_enemy_space_ra, available_enemy_space_all, _, _ = self.board.flood_fill(closest_enemy, full_package=True)
             available_enemy_space = self.board.flood_fill(closest_enemy, risk_averse=True, confine_to=confine_to)
-            available_enemy_space_ra = self.board.flood_fill(closest_enemy, risk_averse=True)
-            available_enemy_space_all = self.board.flood_fill(closest_enemy, risk_averse=False)
 
             aggression_okay = self.you.length >= 6 and space_ra >= 5 or (self.you.length < 6 and
                                                       ( self.all_snakes[closest_enemy].head.x in [0, 1, self.board.width - 2, self.board.width - 1] and
@@ -867,7 +863,6 @@ class Battlesnake:
             # Each child node will be a new board simulating a possible move
             for num, move in enumerate(possible_moves):
                 simulation, you_movements = self.simulate_move({self.you.id: move})
-                # print(you_movements)
                 logging.info(f"Visiting {num + 1} of {len(possible_moves)} child nodes: {move}")
                 if self.debugging:
                     logging.info(simulation.board.display(show=False))
@@ -1009,7 +1004,6 @@ class Battlesnake:
                     continue
                 # Now simulate a board with the newly created opponent moveset combo!
                 simulation, opp_movements = self.simulate_move(move_combo, evaluate_deaths=True, depth=depth)
-                # print(opp_movements)
                 sim_move_combos.append((simulation, opp_movements))
                 sim_movesets.append(move_combo)
 

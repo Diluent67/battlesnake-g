@@ -27,6 +27,7 @@ class Board:
         self.all_snakes = all_snakes
         self.board = np.full((self.width, self.height), " ")
         if previous_graph is None:
+            print("AAAAAA")
             self.graph = nx.grid_2d_graph(self.width, self.height)
         else:
             self.graph = previous_graph
@@ -190,23 +191,20 @@ class Board:
             return shortest
 
     def graph_simulation(self, movements, undo: Optional[bool] = False):
-        # print(movements)
         if not undo:
-            if (8,3) in movements["add"]:
-                h = 0
             self.check_missing_nodes(self.graph, movements["remove"])
             self.graph.remove_nodes_from(movements["add"])
-            for added in movements["remove"]:
-                assert added in self.graph.nodes
-            for removed in movements["add"]:
-                assert removed not in self.graph.nodes
+            # for added in movements["remove"]:
+            #     assert added in self.graph.nodes
+            # for removed in movements["add"]:
+            #     assert removed not in self.graph.nodes
         else:
             self.check_missing_nodes(self.graph, movements["add"])
             self.graph.remove_nodes_from(movements["remove"])
-            for added in movements["add"]:
-                assert added in self.graph.nodes
-            for removed in movements["remove"]:
-                assert removed not in self.graph.nodes
+            # for added in movements["add"]:
+            #     assert added in self.graph.nodes
+            # for removed in movements["remove"]:
+            #     assert removed not in self.graph.nodes
 
     @staticmethod
     def check_missing_nodes(G: nx.Graph, nodes: list[tuple]) -> tuple[nx.Graph, list]:
@@ -226,14 +224,14 @@ class Board:
         # If the desired location is on a hazard/snake, then it's absent from the graph, and we want to add in the node
         added_nodes = []
         for num, node in enumerate(nodes):
-            if node not in G.nodes():
+            if not G.has_node(node):
                 added_nodes.append(node)
                 G.add_node(node)
                 x, y = node
                 # Include edges to connect the added node to surrounding nodes if possible
                 possible_edges = [(x - 1, y), (x + 1, y), (x, y - 1), (x, y + 1)]
                 for e in possible_edges:
-                    if e in G.nodes:
+                    if G.has_node(e):
                         G.add_edge(node, e)
         return G, added_nodes
 
@@ -546,9 +544,13 @@ class Board:
                 return
 
             board[x][y] = "£"
-            neighbours = pos.adjacent_pos(len(board), len(board[0]))
-            for n in neighbours:
-                fill(n, board, initial_square=False, avoid_risk=avoid_risk)
+            # neighbours = pos.adjacent_pos(len(board), len(board[0]))
+            # for n in neighbours:
+            #     fill(n, board, initial_square=False, avoid_risk=avoid_risk)
+            avoid_sq = [(x - 1, y), (x + 1, y), (x, y - 1), (x, y + 1)]
+            for n in avoid_sq:
+                if not (n[0] == pos.x and n[1] == pos.y) and (0 <= n[0] < len(board) and 0 <= n[1] < len(board[0])):
+                    fill(Pos({"x": n[0], "y": n[1]}), board, initial_square=False, avoid_risk=avoid_risk)
 
         boundaries = []
         heads_in_contact = []

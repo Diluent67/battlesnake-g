@@ -31,6 +31,11 @@ class Pos:
         """Return the Manhattan distance to another position"""
         return sum(abs(value1 - value2) for value1, value2 in zip(self.as_tuple(), end.as_tuple()))
 
+    def shift(self, vector):
+        self.x += vector[0]
+        self.y += vector[1]
+        return self
+
     def moved_to(self, direction, distance=1):
         """Return this position moved by 1 in a given direction"""
         if direction == "left":
