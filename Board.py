@@ -8,7 +8,7 @@ from Snake import Snake
 
 
 class Board:
-    def __init__(self, board_dict: dict, all_snakes: Optional[dict[str, Snake]] = None, previous_graph=None):
+    def __init__(self, board_dict: dict, all_snakes: Optional[dict[str, Snake]] = None):
         """
         Represents our Battlesnake board in any given state. Provides visualisations useful for debugging and can
         perform flood fill.
@@ -26,10 +26,7 @@ class Board:
                 all_snakes[snake_dict["id"]] = Snake(snake_dict)
         self.all_snakes = all_snakes
         self.board = np.full((self.width, self.height), " ")
-        if previous_graph is None:
-            self.graph = nx.grid_2d_graph(self.width, self.height)
-        else:
-            self.graph = previous_graph
+        self.graph = nx.grid_2d_graph(self.width, self.height)
         self.obstacles = ["H"] + [str(num) for num in range(0, 9)] + ["x", "?"]
 
     def as_dict(self):
@@ -41,7 +38,7 @@ class Board:
         d["snakes"] = [snake.as_dict() for snake in self.all_snakes.values()]
         return d
 
-    def update_board(self, change_graph: Optional[bool] = True):
+    def update_board(self):
         """
         Fill in the board with the locations of all snakes. Our snake will be displayed like "00H" where "0" represents
         the body and "H" represents the head. Opponents will be displayed as "11H", "22H", "33H", etc. Also update the
@@ -60,7 +57,7 @@ class Board:
                 self.board[pos.x, pos.y] = "H" if num == 0 else str(snake_num)
                 # Remove nodes on the graph occupied by opponent snakes since they shouldn't be reached, but keep any
                 # that coincide with the position of our head
-                if change_graph:  #  and not (snake_num == 0 and num == 0)
+                if not (snake_num == 0 and num == 0):
                     self.graph.remove_nodes_from([pos.as_tuple()])
 
     def whiteout(self, crop_centre):
@@ -72,12 +69,12 @@ class Board:
                     self.board[i, j] = "x"
         return
 
-    def display_graph(self, show=True):
-        g = np.full((self.width, self.height), " ")
-        nodes = self.graph.nodes
-        for node in nodes:
-            g[node[0]][node[1]] = "x"
-        self.display(board=g, show=show)
+    # def display_graph(self, show=True):
+    #     g = np.full((self.width, self.height), " ")
+    #     nodes = self.graph.nodes
+    #     for node in nodes:
+    #         g[node[0]][node[1]] = "x"
+    #     self.display(board=g, show=show)
 
     def display(
             self,
@@ -197,22 +194,6 @@ class Board:
             return shortest, path
         else:
             return shortest
-
-    def graph_simulation(self, movements, undo: Optional[bool] = False):
-        if not undo:
-            self.check_missing_nodes(self.graph, movements["remove"])
-            self.graph.remove_nodes_from(movements["add"])
-            # for added in movements["remove"]:
-            #     assert added in self.graph.nodes
-            # for removed in movements["add"]:
-            #     assert removed not in self.graph.nodes
-        else:
-            self.check_missing_nodes(self.graph, movements["add"])
-            self.graph.remove_nodes_from(movements["remove"])
-            # for added in movements["add"]:
-            #     assert added in self.graph.nodes
-            # for removed in movements["remove"]:
-            #     assert removed not in self.graph.nodes
 
     @staticmethod
     def check_missing_nodes(G: nx.Graph, nodes: list[tuple]) -> tuple[nx.Graph, list]:

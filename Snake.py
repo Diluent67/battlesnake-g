@@ -49,7 +49,7 @@ class Snake:
         """Position in front of head"""
         return self.head.moved_to(self.facing_direction())
 
-    def make_move(self, direction, food_list, return_dict: Optional[bool] = True, board_changes: Optional[dict] = None):
+    def make_move(self, direction, food_list, return_dict: Optional[bool] = True):
         """Simulate a move in a given direction and log any food eaten"""
         snake_dict = self.as_dict()
         # Update the head, body, and health of the snake to reflect the simulated move
@@ -59,11 +59,6 @@ class Snake:
         snake_dict["body"] = [new_head_dict] + self.body_dict[:-1]
         snake_dict["head"] = new_head_dict
         snake_dict["food_eaten"] = new_head_dict if new_head in food_list else None
-
-        if board_changes is not None:
-            board_changes["add"].append(new_head.as_tuple())
-            if sum([pos == self.body[-1] for pos in self.body]) == 1:
-                board_changes["remove"].append(self.body[-1].as_tuple())
 
         if return_dict:
             return snake_dict
