@@ -167,6 +167,9 @@ class Board:
 
         :return: The shortest distance between the start and end inputs. 1e6 if no path could be found
         """
+        if (manhattan_approx := start.manhattan_dist(end) )> self.width / 2:
+            return (manhattan_approx, None) if get_path else manhattan_approx
+
         start = start.as_tuple()
         end = end.as_tuple()
         check_nodes = [start, end]

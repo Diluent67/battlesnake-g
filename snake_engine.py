@@ -703,40 +703,40 @@ class Battlesnake:
                 cutoff_bonus += (cutoff_bonus / (1 + cutting_off))
 
 
-        # Can we get cut off?
-        opps_nearby = [opp for opp in self.opponents.values() if self.you.head.manhattan_dist(opp.head) <= 4]
-        if 0 < len(opps_nearby) <= 2 or len(self.opponents) == 1:
-            # if cutting_off is not None:
-            #     us_cutoff = cutting_off
-            # else:
-            #     us_cutoff = self.board.flood_fill(closest_opp.id, opp_cutoff=self.you.id)
-            # opp_cutoff = self.board.flood_fill(self.you.id, opp_cutoff=closest_opp.id)
-
-            if len(self.opponents) == 1:
-                if cutting_off is not None:
-                    us_cutoff = cutting_off
-                else:
-                    us_cutoff = self.board.flood_fill(closest_opp.id, opp_cutoff=self.you.id)
-                opp_cutoff = self.board.flood_fill(self.you.id, opp_cutoff=closest_opp.id)
-            else:
-                us_cutoff = self.board.flood_fill(opps_nearby[0].id, opp_cutoff=self.you.id)
-                opp_cutoff = self.board.flood_fill(self.you.id, opp_cutoff=opps_nearby[0].id)
-            if self.you.length < closest_opp.length:
-                if opp_cutoff < 15:
-                    if space_penalty == 0:
-                        space_penalty = -500
-            else:
-                if opp_cutoff <= 15 and us_cutoff > opp_cutoff:  # Penalise if we're in a worse position
-                    if space_penalty == 0:
-                        space_penalty = -500
-                        if aggression_weight > 500:
-                            aggression_weight /= 10
-                        if incr_length_weight > 1000:
-                            incr_length_weight /= 10
-                        if kill_bonus > 0 and opp_cutoff <= 5:  # If we kill but get killed anyways
-                            kill_bonus = 0
-                    if cutoff_bonus > 0:  # Reduce the cutoff if we're the ones getting cut off lol
-                        cutoff_bonus = 0
+        # # Can we get cut off?
+        # opps_nearby = [opp for opp in self.opponents.values() if self.you.head.manhattan_dist(opp.head) <= 4]
+        # if 0 < len(opps_nearby) <= 2 or len(self.opponents) == 1:
+        #     # if cutting_off is not None:
+        #     #     us_cutoff = cutting_off
+        #     # else:
+        #     #     us_cutoff = self.board.flood_fill(closest_opp.id, opp_cutoff=self.you.id)
+        #     # opp_cutoff = self.board.flood_fill(self.you.id, opp_cutoff=closest_opp.id)
+        #
+        #     if len(self.opponents) == 1:
+        #         if cutting_off is not None:
+        #             us_cutoff = cutting_off
+        #         else:
+        #             us_cutoff = self.board.flood_fill(closest_opp.id, opp_cutoff=self.you.id)
+        #         opp_cutoff = self.board.flood_fill(self.you.id, opp_cutoff=closest_opp.id)
+        #     else:
+        #         us_cutoff = self.board.flood_fill(opps_nearby[0].id, opp_cutoff=self.you.id)
+        #         opp_cutoff = self.board.flood_fill(self.you.id, opp_cutoff=opps_nearby[0].id)
+        #     if self.you.length < closest_opp.length:
+        #         if opp_cutoff < 15:
+        #             if space_penalty == 0:
+        #                 space_penalty = -500
+        #     else:
+        #         if opp_cutoff <= 15 and us_cutoff > opp_cutoff:  # Penalise if we're in a worse position
+        #             if space_penalty == 0:
+        #                 space_penalty = -500
+        #                 if aggression_weight > 500:
+        #                     aggression_weight /= 10
+        #                 if incr_length_weight > 1000:
+        #                     incr_length_weight /= 10
+        #                 if kill_bonus > 0 and opp_cutoff <= 5:  # If we kill but get killed anyways
+        #                     kill_bonus = 0
+        #             if cutoff_bonus > 0:  # Reduce the cutoff if we're the ones getting cut off lol
+        #                 cutoff_bonus = 0
 
         # if space_penalty < 0:
         #     length_weight = 100
@@ -1061,7 +1061,7 @@ class Battlesnake:
     def optimal_move(self) -> str:
         """Main function to identify the most optimal move for our snake."""
         if self.turn <= 3:
-            depth = 3
+            depth = 4
         else:
             depth = self.minimax_search_depth
 
