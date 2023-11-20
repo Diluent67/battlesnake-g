@@ -69,12 +69,12 @@ class Board:
                     self.board[i, j] = "x"
         return
 
-    # def display_graph(self, show=True):
-    #     g = np.full((self.width, self.height), " ")
-    #     nodes = self.graph.nodes
-    #     for node in nodes:
-    #         g[node[0]][node[1]] = "x"
-    #     self.display(board=g, show=show)
+    def display_graph(self, show=True):
+        g = np.full((self.width, self.height), " ")
+        nodes = self.graph.nodes
+        for node in nodes:
+            g[node[0]][node[1]] = "x"
+        self.display(board=g, show=show)
 
     def display(
             self,
@@ -224,7 +224,7 @@ class Board:
                         G.add_edge(node, e)
         return G, added_nodes
 
-    def longest_path(self, start: Pos, end: Pos, threshold: Optional[int] = 0) -> tuple[int, int]:
+    def longest_path(self, start: Pos, end: Pos, simple_paths_cutoff: int, threshold: Optional[int] = 0) -> tuple[int, int]:
         """
         Return the longest path between two positions (relevant during an effort to stall)
 
@@ -241,7 +241,7 @@ class Board:
         longest = 1e6
         shortest = 1e6
         # Get all possible paths and filter for the longest one
-        possible_paths = [path for path in nx.all_simple_paths(temp_graph, start, end)]
+        possible_paths = [path for path in nx.all_simple_paths(temp_graph, start, end, cutoff=simple_paths_cutoff)]
         if len(possible_paths) > 0:
             longest_path = max(possible_paths, key=lambda path: len(path))
             longest = len(longest_path) - 1
@@ -548,17 +548,22 @@ class Board:
                 return
 
             board[x][y] = "£"
-            # neighbours = pos.adjacent_pos(len(board), len(board[0]))
-            # for n in neighbours:
-            #     fill(n, board, initial_square=False, avoid_risk=avoid_risk)
             avoid_sq = [(x - 1, y), (x + 1, y), (x, y - 1), (x, y + 1)]
             for n in avoid_sq:
-                if not (n[0] == x and n[1] == y) and (0 <= n[0] < board_width and 0 <= n[1] < board_height):
+                # if 0 <= n[0] < board_width and 0 <= n[1] < board_height:
+                if min_x <= n[0] < max_x and min_y <= n[1] < max_y:
                     fill(n[0], n[1], board, initial_square=False, avoid_risk=avoid_risk)
 
         boundaries = []
         heads_in_contact = []
-        board_width, board_height = len(board), len(board[0])
+        # board_width, board_height = len(board), len(board[0])
+        crop = 5
+        if confine_to is not None:
+            min_x, max_x = 0, len(board)
+            min_y, max_y = 0, len(board[0])
+        else:
+            min_x, max_x = max(0, head.x - crop), min(self.width, head.x + crop)
+            min_y, max_y = max(0, head.y - crop), min(self.height, head.y + crop)
         if ff_split:
             fill(head.moved_to("left").x, head.moved_to("left").y, board, initial_square=False, avoid_risk=risk_averse)
             left_filled = sum((row == "£").sum() for row in board)

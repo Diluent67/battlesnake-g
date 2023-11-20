@@ -256,8 +256,9 @@ class Battlesnake:
             # If there are multiple openings, select the one closest to our snake
             openings_in_boundary = sorted(openings_in_boundary, key=lambda op: self.you.head.manhattan_dist(op))
             opening = openings_in_boundary[0]
+            cutoff_path_dist = self.you.head.manhattan_dist(opening) * 2
             longest_path_to_opening, shortest_path_to_opening = self.board.longest_path(
-                self.you.head, opening, threshold=moves_until_opening)
+                self.you.head, opening, threshold=moves_until_opening, simple_paths_cutoff=cutoff_path_dist)
 
             # See if we can successfully stall until the opening forms
             if collision_sq is None:
@@ -470,7 +471,7 @@ class Battlesnake:
         next_moves = self.get_moveset(snake_id=self.you.id, risk_averse=True)
         ff_split =  set(next_moves) == {"left", "right"}
         # How much space do we have?
-        self.board.whiteout(crop_centre=self.you.head)
+        # self.board.whiteout(crop_centre=self.you.head)
         space_ra, space_all, ff_bounds, touch_opps = self.board.flood_fill(self.you.id, full_package=True, ff_split=ff_split)
         space_ra_weight = 1
 
