@@ -23,7 +23,7 @@ def info() -> typing.Dict:
         "apiversion": "1",
         "author": "G",
         "color": "#1F51FF",
-        "head": "evil",
+        "head": "silly",
         "tail": "mlh-gene",
     }
 

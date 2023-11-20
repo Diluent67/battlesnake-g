@@ -11,7 +11,7 @@ from Board import Board
 from Pos import Pos
 from Snake import Snake
 
-my_name = ["Nightwing", "#22aa34"]
+my_name = ["Nightwing", "NightwingV2", "#22aa34"]
 # Use these global variables to add data for visualising the minimax decision tree
 tree_tracker = {6: [], 5: [], 4: [], 3: [], 2: [], 1: [], 0: []}
 tree_node_counter = 1
