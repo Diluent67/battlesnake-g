@@ -47,8 +47,8 @@ def move(game_state: typing.Dict) -> typing.Dict:
     clock_in = time.time_ns()
     game = Battlesnake(game_state)
     optimal_move = game.optimal_move()
-    print(f"Took {round((time.time_ns() - clock_in) / 1000000, 3)} ms")
-    print(f'Latency: {game_state["you"]["latency"]}')
+    print(f"Turn {game_state['turn']} took {round((time.time_ns() - clock_in) / 1000000, 3)} ms")
+    print(f'Latency: {game_state["you"]["latency"]} for Game {game_state["game"]["id"]}')
     return {"move": optimal_move}
 
 
