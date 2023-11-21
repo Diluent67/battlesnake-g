@@ -25,13 +25,15 @@ class Battlesnake:
             game_state: dict,
             debugging: Optional[bool] = False,
             og_length: Optional[bool] = None,
-            kill_count: Optional[list] = None
+            kills_by_depth: Optional[list] = None
     ):
         """
         Represents our Battlesnake game and includes all our decision-making methods
 
         :param game_state: The move API request (https://docs.battlesnake.com/api/example-move#move-api-response)
         :param debugging: Display a detailed log while traversing the minimax search tree
+        :param og_length:
+        :param kills_by_depth:
         """
         self.you = Snake(game_state["you"])
         # Weird edge case when running locally where the "you" snake is not our actual snake
@@ -59,7 +61,7 @@ class Battlesnake:
         self.turn = game_state["turn"]
         # Keep track of our original length and the number of snakes we've killed while traversing the search tree
         self.og_length = self.you.length if og_length is None else og_length
-        self.kill_count = [] if kill_count is None else kill_count
+        self.kills_by_depth = [] if kills_by_depth is None else kills_by_depth
         self.killer_intel = None  # Info on which snake we got killed by
 
         # Finish up our constructor
@@ -167,7 +169,7 @@ class Battlesnake:
             game_state={"turn": self.turn, "board": board, "you": you_dict},
             debugging=self.debugging,
             og_length=self.og_length,
-            kill_count=self.kill_count.copy()
+            kills_by_depth=self.kills_by_depth.copy()
         )
 
         # Check if any snakes died as a result of the simulation
@@ -185,7 +187,7 @@ class Battlesnake:
                             new_game.killer_intel = (killer.length, distraction_score)
                     # Keep track if our snake was the killer
                     if snake_id != self.you.id and snake.head.manhattan_dist(new_game.you.head) <= 2:
-                        new_game.kill_count.append(depth)
+                        new_game.kills_by_depth.append(depth)
                 # Update snake length from any food eaten and remove the food from the board
                 if (consumed_food := snake.food_eaten) is not None:
                     new_game.all_snakes[snake_id].ate_food()
@@ -622,7 +624,7 @@ class Battlesnake:
             kill_bonus = 0
 
         # Did we kill any opponents previously? Reward quicker kills
-        kill_bonus += 10000 * len(self.kill_count) + 2 * sum(self.kill_count)
+        kill_bonus += 10000 * len(self.kills_by_depth) + 2 * sum(self.kills_by_depth)
 
         # Get closer to enemy snakes if we're longer
         if 2 >= len(self.opponents) == sum([self.you.length >= s.length + 1 for s in self.opponents.values()]):

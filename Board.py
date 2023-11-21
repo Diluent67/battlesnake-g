@@ -1,5 +1,6 @@
 from __future__ import annotations
 import copy
+import cv2
 import networkx as nx
 import numpy as np
 from typing import Optional, Union
@@ -10,8 +11,8 @@ from Snake import Snake
 class Board:
     def __init__(self, board_dict: dict, all_snakes: Optional[dict[str, Snake]] = None):
         """
-        Represents our Battlesnake board in any given state. Provides visualisations useful for debugging and can
-        perform flood fill.
+        Represents our Battlesnake board in any given state. Provides visualisations useful for debugging and performs
+        pivotal flood fill and pathfinding functions.
 
         :param board_dict: The "board" portion of the move API request
         :param all_snakes: To avoid repeating code, input any previously loaded snakes
@@ -25,9 +26,10 @@ class Board:
             for snake_dict in board_dict["snakes"]:
                 all_snakes[snake_dict["id"]] = Snake(snake_dict)
         self.all_snakes = all_snakes
-        self.board = np.full((self.width, self.height), " ")
+        self.board = np.zeros((self.width, self.height))
+        # self.board = np.full((self.width, self.height), " ")
         self.graph = nx.grid_2d_graph(self.width, self.height)
-        self.obstacles = ["H"] + [str(num) for num in range(0, 9)] + ["x", "?"]
+        self.obstacles = [10] + [num for num in range(1, 9)] + [255]
 
     def as_dict(self):
         d = dict()
@@ -45,16 +47,16 @@ class Board:
         graph representation of the board to remove nodes occupied by our snake's body, opponent snakes, and hazards.
         """
         for f in self.food:
-            self.board[f.x, f.y] = "f"
+            self.board[f.x, f.y] = 100
 
         for h in self.hazards:
-            self.board[h.x, h.y] = "x"
+            self.board[h.x, h.y] = 255
             self.graph.remove_nodes_from([h.as_tuple()])
 
         for snake_num, snake in enumerate(self.all_snakes.values()):
             body = snake.body
             for num, pos in enumerate(body):
-                self.board[pos.x, pos.y] = "H" if num == 0 else str(snake_num)
+                self.board[pos.x, pos.y] = 10 if num == 0 else snake_num + 1
                 # Remove nodes on the graph occupied by opponent snakes since they shouldn't be reached, but keep any
                 # that coincide with the position of our head
                 if not (snake_num == 0 and num == 0):
@@ -66,7 +68,7 @@ class Board:
         for i in range(0, self.width):
             for j in range(0, self.height):
                 if not (min_x <= i <= max_x and min_y <= j <= max_y):
-                    self.board[i, j] = "x"
+                    self.board[i, j] = 255
         return
 
     def display_graph(self, show=True):
@@ -106,10 +108,25 @@ class Board:
         """
         board = self.board if board is None else board
         board_str = ""
+
+        def translate_pixel(val):
+            if val == 0:
+                return " "
+            if val in range(1, 9):
+                return str(int(val - 1))
+            if val == 10:
+                return "H"
+            if val == 255:
+                return "x"
+            if val == 100:
+                return "f"
+            else:
+                raise ValueError(f"Weird pixel value received: {val}")
+
         for j in range(1, len(board[0]) + 1):
             display_row = f"{self.height - j}\t "
             for i in range(0, len(board)):
-                display_row += f"{board[i][-j]}| "
+                display_row += f"{translate_pixel(board[i][-j])}| "
             # Add snake length information
             if add_lengths:
                 if j <= len(self.all_snakes):
@@ -192,8 +209,6 @@ class Board:
         # Remove any temporary nodes that were previously added
         for temp_nodes in temp_added_nodes:
             temp_graph.remove_node(temp_nodes)
-
-        print(manhattan_approx, shortest)
 
         if get_path:
             return shortest, path
@@ -429,7 +444,7 @@ class Board:
         for snake_id in snake_ids:
             snake = self.all_snakes[snake_id]
             for rm in snake.body:
-                self.board[rm.x][rm.y] = " "
+                self.board[rm.x][rm.y] = 0
             # temp_graph, _ = self.check_missing_nodes(self.graph, [pos.as_tuple() for pos in snake.body])
             self.all_snakes.pop(snake_id)
 
@@ -488,18 +503,18 @@ class Board:
         board = copy.deepcopy(self.board)
         snake = self.all_snakes[snake_id]
         head = snake.head
-        board[head.x, head.y] = "£"  # Representing our flood fill
+        board[head.x, head.y] = 50  # Representing our flood fill
 
         # See how flood fill changes when all snakes fast-forward X turns
         if fast_forward > 0:
             for snake in self.all_snakes.values():
                 remove_tail = max(-snake.length + 1, -fast_forward)
                 for rm in snake.body[remove_tail:]:
-                    board[rm.x][rm.y] = " "
+                    board[rm.x][rm.y] = 0
 
         # Cases where our tail is directly adjacent to our head and in the way of our flood fill
         if head.manhattan_dist(snake.tail) == 1:
-            board[snake.tail.x][snake.tail.y] = " "
+            board[snake.tail.x][snake.tail.y] = 0
 
         # Avoid any squares that could lead to a losing head-to-head collision
         risky_squares = []
@@ -509,7 +524,7 @@ class Board:
             for threat in possible_threats:
                 for risky_pos in threat.adjacent_pos(self.width, self.height):
                     if board[risky_pos.x][risky_pos.y] not in self.obstacles:
-                        board[risky_pos.x][risky_pos.y] = "?"
+                        board[risky_pos.x][risky_pos.y] = 255
                         risky_squares.append(risky_pos)
 
         # See what happens if an opponent were to keep moving forward and "cut off" our space
@@ -518,7 +533,7 @@ class Board:
             opp_new_head = opp_snake.head.moved_to(opp_snake.facing_direction(), 1)
             moved_ahead = 1
             while not self.is_pos_safe(opp_new_head, opp_cutoff, turn="basic")[1]:
-                board[opp_new_head.x][opp_new_head.y] = "x"
+                board[opp_new_head.x][opp_new_head.y] = 255
                 opp_new_head = opp_new_head.moved_to(opp_snake.facing_direction(), 1)
                 moved_ahead += 1
 
@@ -540,7 +555,7 @@ class Board:
             head = new_head
 
         def fill(x, y, board, initial_square, avoid_risk):
-            if board.size == 0:  # Empty board
+            if board.shape[0] == 0 or board.shape[1] == 0:  # Empty board
                 return
             if board[x][y] == self.obstacles[0]:  # Opponent snake heads
                 heads_in_contact.append(Pos({"x": x, "y": y}))
@@ -549,10 +564,10 @@ class Board:
             if board[x][y] in (self.obstacles if avoid_risk else self.obstacles[:-1]):  # Off-limit squares
                 boundaries.append(Pos({"x": x, "y": y}))
                 return
-            if board[x][y] in "£" and not initial_square:  # Already filled
+            if board[x][y] == 50 and not initial_square:  # Already filled
                 return
 
-            board[x][y] = "£"
+            board[x][y] = 50
             avoid_sq = [(x - 1, y), (x + 1, y), (x, y - 1), (x, y + 1)]
             for n in avoid_sq:
                 # if 0 <= n[0] < board_width and 0 <= n[1] < board_height:
@@ -562,7 +577,7 @@ class Board:
         boundaries = []
         heads_in_contact = []
         # board_width, board_height = len(board), len(board[0])
-        crop = 5
+        crop = 6
         if confine_to is not None:
             min_x, max_x = 0, len(board)
             min_y, max_y = 0, len(board[0])
@@ -571,32 +586,32 @@ class Board:
             min_y, max_y = max(0, head.y - crop), min(self.height, head.y + crop)
         if ff_split:
             fill(head.moved_to("left").x, head.moved_to("left").y, board, initial_square=False, avoid_risk=risk_averse)
-            left_filled = sum((row == "£").sum() for row in board)
+            left_filled = sum((row == 50).sum() for row in board)
             fill(head.moved_to("right").x, head.moved_to("right").y, board, initial_square=False, avoid_risk=risk_averse)
-            right_filled = sum((row == "£").sum() for row in board) - left_filled + 1
+            right_filled = sum((row == 50).sum() for row in board) - left_filled + 1
             flood_fill_ra = max(left_filled - 1, 1e-15) if left_filled > right_filled else max(right_filled - 1, 1e-15)
         else:
             fill(head.x, head.y, board, initial_square=True, avoid_risk=risk_averse)
-            filled = sum((row == "£").sum() for row in board)
+            filled = sum((row == 50).sum() for row in board)
             flood_fill_ra = max(filled - 1, 1e-15)  # Exclude the head from the count, but cannot ever be negative
 
         if full_package:
             # Repeat but assume all risky squares are fair game
             for risky_sq in risky_squares:
                 # Situations where our snake's head was previously overwritten by a risky square
-                if risky_sq == head and board[risky_sq.x][risky_sq.y] != "£":
-                    board[risky_sq.x][risky_sq.y] = "£"
+                if risky_sq == head and board[risky_sq.x][risky_sq.y] != 50:
+                    board[risky_sq.x][risky_sq.y] = 50
                     fill(risky_sq.x, risky_sq.y, board, initial_square=True, avoid_risk=False)
                 # Ensure that the skipped square can be connected to the main flood fill
                 surr_risks = risky_sq.adjacent_pos(len(board), len(board[0]))
                 for surr_risk in surr_risks:
-                    if board[surr_risk.x][surr_risk.y] == "£":
+                    if board[surr_risk.x][surr_risk.y] == 50:
                         # Remove from the list of boundary squares and update the fill
                         if risky_sq in boundaries:
                             boundaries = [pos for pos in boundaries if pos != risky_sq]
                         fill(risky_sq.x, risky_sq.y, board, initial_square=True, avoid_risk=False)
                         break
-            filled = sum((row == "£").sum() for row in board)
+            filled = sum((row == 50).sum() for row in board)
             flood_fill_all = max(filled - 1, 1e-15)
 
         if get_boundaries:
