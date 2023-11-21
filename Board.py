@@ -193,6 +193,8 @@ class Board:
         for temp_nodes in temp_added_nodes:
             temp_graph.remove_node(temp_nodes)
 
+        print(manhattan_approx, shortest)
+
         if get_path:
             return shortest, path
         else:
