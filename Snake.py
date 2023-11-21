@@ -23,7 +23,7 @@ class Snake:
         self.dead = False
 
     def as_dict(self):
-        d = {
+        return {
             "id": self.id,
             "name": self.name,
             "health": self.health,
@@ -32,7 +32,6 @@ class Snake:
             "length": self.length,
             "food_eaten": self.food_eaten.as_dict() if self.food_eaten is not None else None
         }
-        return d
 
     def facing_direction(self):
         """Determine which direction this snake is facing"""

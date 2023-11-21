@@ -9,74 +9,100 @@ from Snake import Snake
 
 
 class Board:
-    def __init__(self, board_dict: dict, all_snakes: Optional[dict[str, Snake]] = None):
+    def __init__(self, game_state: dict):
         """
         Represents our Battlesnake board in any given state. Provides visualisations useful for debugging and performs
-        pivotal flood fill and pathfinding functions.
+        flood fill + pathfinding.
 
-        :param board_dict: The "board" portion of the move API request
-        :param all_snakes: To avoid repeating code, input any previously loaded snakes
+        :param game_state: The move API request (https://docs.battlesnake.com/api/example-move#move-api-response)
         """
+        board_dict = game_state["board"]
         self.width = board_dict["width"]
         self.height = board_dict["height"]
-        self.food = [Pos(xy) for xy in board_dict["food"]]
-        self.hazards = [Pos(xy) for xy in board_dict["hazards"]] if "hazards" in board_dict.keys() else []
-        if all_snakes is None:
-            all_snakes: dict[str, Snake] = {}
-            for snake_dict in board_dict["snakes"]:
-                all_snakes[snake_dict["id"]] = Snake(snake_dict)
-        self.all_snakes = all_snakes
+        self.turn = game_state["turn"]
+
+        # Process food locations as Pos objects, but skip if previously done
+        food_locs = board_dict.get("food", [])
+        if len(food_locs) > 0 and isinstance(food_locs[0], Pos):
+            self.food = food_locs
+        else:
+            self.food = [Pos(xy) for xy in food_locs]
+
+        # Process hazard locations as Pos objects, but skip if previously done
+        hazard_locs = board_dict.get("hazards", [])
+        if len(hazard_locs) > 0 and isinstance(hazard_locs[0], Pos):
+            self.hazards = hazard_locs
+        else:
+            self.hazards = [Pos(xy) for xy in hazard_locs]
+
+        # Process all snakes as a dictionary of Snake objects with their IDs as lookups
+        you_snake = Snake(game_state["you"])
+        self.all_snakes: dict[str, Snake] = {you_snake.id: you_snake}   # Our snake should be the first in line
+        for snake_dict in board_dict["snakes"]:
+            if snake_dict["id"] == you_snake.id:
+                continue
+            self.all_snakes[snake_dict["id"]] = Snake(snake_dict)
+
+        # Represent the Battlesnake board as a Numpy array and a NetworkX graph
         self.board = np.zeros((self.width, self.height))
-        # self.board = np.full((self.width, self.height), " ")
         self.graph = nx.grid_2d_graph(self.width, self.height)
+
+        # TODO put these as class variables?
         self.obstacles = [10] + [num for num in range(1, 9)] + [255]
+        self.board_translation = {
+            0: " ",  # Empty space
+            1: "1", 2: "2", 3: "3", 4: "4", 5: "5", 6: "6", 7: "7", 8: "8",  # Up to 8 snakes
+            10: "H",  # Snake head
+            50: "£",  # Starting point for flood fill
+            100: "f",  # Food
+            255: "x",  # Hazards or off-limit squares
+            "O": "O", " ": " "  # For visualising nodes
+        }
 
     def as_dict(self):
-        d = dict()
-        d["width"] = self.width
-        d["height"] = self.height
-        d["hazards"] = [pos.as_dict() for pos in self.hazards]
-        d["food"] = [pos.as_dict() for pos in self.food]
-        d["snakes"] = [snake.as_dict() for snake in self.all_snakes.values()]
-        return d
+        return {
+            "height": self.height,
+            "width": self.width,
+            "food": [pos.as_dict() for pos in self.food],
+            "hazards": [pos.as_dict() for pos in self.hazards],
+            "snakes": [snake.as_dict() for snake in self.all_snakes.values()]
+        }
 
     def update_board(self):
         """
-        Fill in the board with the locations of all snakes. Our snake will be displayed like "00H" where "0" represents
-        the body and "H" represents the head. Opponents will be displayed as "11H", "22H", "33H", etc. Also update the
-        graph representation of the board to remove nodes occupied by our snake's body, opponent snakes, and hazards.
+        Fill in the board with the locations of all snakes, food, and hazards.
+
+        The Battlesnake board is represented in two ways:
+
+        Numpy array (uint8 data type for compatibility with OpenCV's flood fill function)
+            - 0 = empty square
+            - 1-8 = up to 8 snakes
+            - 10 = snake head
+            - 50 = starting point for flood fill
+            - 100 = food
+            - 255 = hazards or off-limit squares
+
+        NetworkX graph (to use NetworkX's implementation of Dijkstra's algorithm)
+            - Node = empty square
+            - No node = occupied by a snake or hazard, so it's unreachable
         """
         for f in self.food:
             self.board[f.x, f.y] = 100
 
         for h in self.hazards:
             self.board[h.x, h.y] = 255
-            self.graph.remove_nodes_from([h.as_tuple()])
+            self.graph.remove_node(h.as_tuple())
 
         for snake_num, snake in enumerate(self.all_snakes.values()):
-            body = snake.body
-            for num, pos in enumerate(body):
-                self.board[pos.x, pos.y] = 10 if num == 0 else snake_num + 1
-                # Remove nodes on the graph occupied by opponent snakes since they shouldn't be reached, but keep any
-                # that coincide with the position of our head
-                if not (snake_num == 0 and num == 0):
+            skip_tail = snake.body[-2] == snake.tail
+            for pos_num, pos in enumerate(snake.body):
+                if (skip_tail and pos_num == len(snake.body) - 1) or (self.turn <= 1 and pos_num > 0):
+                    continue
+
+                self.board[pos.x, pos.y] = 10 if pos_num == 0 else snake_num + 1
+                # Keep any nodes that coincide with the position of our snake's head for future pathfinding
+                if not (snake_num == 0 and pos_num == 0):
                     self.graph.remove_nodes_from([pos.as_tuple()])
-
-    def whiteout(self, crop_centre):
-        min_x, max_x = max(0, crop_centre.x - 9), min(self.width - 1, crop_centre.x + 9)
-        min_y, max_y = max(0, crop_centre.y - 9), min(self.height - 1, crop_centre.y + 9)
-        for i in range(0, self.width):
-            for j in range(0, self.height):
-                if not (min_x <= i <= max_x and min_y <= j <= max_y):
-                    self.board[i, j] = 255
-        return
-
-    def display_graph(self, show=True):
-        g = np.full((self.width, self.height), " ")
-        nodes = self.graph.nodes
-        for node in nodes:
-            g[node[0]][node[1]] = "x"
-        self.display(board=g, show=show)
 
     def display(
             self,
@@ -85,7 +111,7 @@ class Board:
             add_lengths: Optional[bool] = True
     ) -> str:
         """
-        Convert the board into a nicely formatted string for convenient debugging e.g.
+        Convert the board's Numpy array representation into a nicely formatted string for convenient debugging, e.g.
 
         10	  |  |  |  |  |  |  |  |  | f|  | 			Snake 0: 14
         9	  |  |  |  |  |  |  |  |  |  |  | 			Snake 1: 23
@@ -103,67 +129,63 @@ class Board:
 
         :param board: Calling display() will print out the current board, but for debugging purposes, you can feed in a
             different board variable to display
-        :param show: The function normally returns a string, but can optionally print it automatically if True
-        :param add_lengths: Adds a column of information showing all snake lengths
+        :param show: Option to print the board automatically or not
+        :param add_lengths: Option to add a column of information showing all snake lengths
+
+        :return: The board represented as a formatted string
         """
         board = self.board if board is None else board
         board_str = ""
 
-        def translate_pixel(val):
-            if val == 0:
-                return " "
-            if val in range(1, 9):
-                return str(int(val - 1))
-            if val == 10:
-                return "H"
-            if val == 255:
-                return "x"
-            if val == 100:
-                return "f"
-            else:
-                raise ValueError(f"Weird pixel value received: {val}")
-
         for j in range(1, len(board[0]) + 1):
             display_row = f"{self.height - j}\t "
             for i in range(0, len(board)):
-                display_row += f"{translate_pixel(board[i][-j])}| "
+                display_row += f"{self.board_translation[board[i][-j]]}| "
             # Add snake length information
             if add_lengths:
                 if j <= len(self.all_snakes):
                     jth_snake = list(self.all_snakes.values())[j - 1]
-                    display_row += f"\t\t\tSnake {j - 1}: {jth_snake.length}"
+                    display_row += f"\t\t\tSnake {j}: {jth_snake.length}"
             board_str += display_row + "\n"
         board_str += "\n\t " + "  ".join(map(str, np.arange(0, self.width)))
+
         if show:
             print(board_str)
-        return board_str
+        else:
+            return board_str
 
-    def crop_board(self, xs: Union[list, tuple], ys: Union[list, tuple]) -> np.array:
-        """Return a portion of the board"""
-        self.board = self.board[xs[0]:xs[1], ys[0]:ys[1]]
+    def display_graph(self, show: Optional[bool] = True) -> str:
+        """Convert the board's NetworkX graph representation into a nicely formatted string for convenient debugging."""
+        board = np.full((self.width, self.height), " ")
+        for node in self.graph.nodes:
+            board[node[0], node[1]] = "O"
+        return self.display(board=board, show=show)
 
-    def identify_snake(self, pos: Pos) -> Snake:
-        """Given any position on the board, return the Snake lying on top of it"""
-        matched = [snake for snake in self.all_snakes.values() if pos in snake.body]
-        if len(matched) > 1:
-            matched = sorted(matched, key=lambda snake: snake.length, reverse=True)
-        return matched[0]
+    def identify_snake(self, pos: Pos) -> Snake | None:
+        """Given any position on the board, return the Snake lying on top of it."""
+        matches = [snake for snake in self.all_snakes.values() if pos in snake.body]
+        if len(matches) == 0:
+            return None
+        # If multiple snakes occupy the position, return the longest snake
+        if len(matches) > 1:
+            matches = sorted(matches, key=lambda snake: snake.length, reverse=True)
+        return matches[0]
 
     def shortest_dist(self, start: Pos, end: Pos) -> int:
         """
         Get the best approximation for the distance between two positions. When possible, use Dijkstra's algorithm to
         get an exact path, but if that's not possible (e.g. due to obstructions), return 1e6 + the Manhattan distance.
 
-        To illustrate the rationale, let's say we have to compare the distance between A to B, C, and D:
+        To illustrate the rationale, let's say we have to compare the distance between A to each of (B, C, D):
             - A -> B is unreachable with a default Dijkstra output of 1e6, but has a Manhattan distance of 2
             - A -> C is reachable with a Dijkstra output of 15, but a Manhattan distance of 10
-            - A -> D is unreachable (1e6), but has a Manhattan distance of 5
-        Which point is closer? Obviously C if we go with Dijkstra's algorithm, but then B and D both have the same 1e6
-        outputs. To discern which point is hypothetically closer, we set B => 1e6 + 2 and D => 1e6 + 5, which lets us
-        select B as the closer point to D!
+            - A -> D is unreachable with a default Dijkstra output of 1e6, but has a Manhattan distance of 5
+        Which point is closer to A? Obviously C if we go with Dijkstra's algorithm, but then B and D both have the same
+        1e6 outputs. To discern which point is hypothetically closer, we set B => 1e6 + 2 and D => 1e6 + 5, which lets
+        us select B as the closer point to D!
 
-        :param start: A location on the board as a Pos object e.g. Pos({"x": 5, "y": 10})
-        :param end: A different location on the board
+        :param start: A location on the board as a Pos object, e.g. Pos({"x": 5, "y": 10})
+        :param end: Another location on the board
 
         :return: The closest distance between the start and end points. If there's no connecting path, approximate with
             1e6 + the Manhattan distance.
@@ -172,119 +194,139 @@ class Board:
         if closest == 1e6:
             closest += start.manhattan_dist(end)
         return closest
-
-    def dijkstra_shortest_path(self, start: Pos, end: Pos, from_snake: Optional[str] = None,
-                               get_path: Optional[bool] = False) -> int | tuple[int, list]:
+    
+    def longest_paths_to_stall(  # TODO revisit this I'm confused if we need both outputs tbh
+            self,
+            start: Pos,
+            end: Pos,
+            min_length: int,
+            simple_paths_cutoff: int
+    ) -> tuple[int, int]:
         """
-        Return the shortest path between two positions using Dijkstra's algorithm implemented in networkx
+        Compute the longest paths between two positions (relevant during efforts to stall and escape a trapped area). As
+        an example, if our snake is trapped, and an opening in our surrounding area forms in 5 moves, we want to 
+        know whether we can stall for 5 moves successfully. 
 
-        :param start: A location on the board as a Pos object e.g. Pos({"x": 5, "y": 10})
-        :param end: A different location on the board
-        :param get_path: Return the complete path identified by the algorithm
+        :param start: A location on the board as a Pos object, e.g. Pos({"x": 5, "y": 10})
+        :param end: Another location on the board
+        :param min_length: The minimum amount of moves required to stall (e.g. before more space opens up)
+        :param simple_paths_cutoff: The maximum path length to stop NetworkX's search while running "all_simple_paths". 
+            Only paths of length <= cutoff are returned.
 
-        :return: The shortest distance between the start and end inputs. 1e6 if no path could be found
+        :return: 
+            The longest distance between the start and end inputs 
+            The sho
         """
-        if (manhattan_approx := start.manhattan_dist(end) )> self.width / 2:
-            return (manhattan_approx, None) if get_path else manhattan_approx
+        start = start.as_tuple()
+        end = end.as_tuple()
+        # Ensure the start and end positions exist as nodes on the graph so NetworkX can find a path between them
+        temp_added_nodes = self.check_missing_nodes(self.graph, [start, end])
+
+        longest = 1e6
+        shortest = 1e6
+        # Find all possible paths between the two points (below the desired cutoff) 
+        possible_paths = [path for path in nx.all_simple_paths(self.graph, start, end, cutoff=simple_paths_cutoff)]
+        if len(possible_paths) > 0:
+            # Filter for the longest path
+            longest_path = max(possible_paths, key=lambda path: len(path))
+            longest = len(longest_path) - 1
+            # Now filter for the shortest path that's longer than the inputted minimum length
+            shortest = longest
+            paths_above_threshold = [path for path in possible_paths if len(path) > min_length]
+            if len(paths_above_threshold) > 0:
+                shortest_path = min(paths_above_threshold, key=lambda path: len(path))
+                shortest = len(shortest_path) - 1
+
+        # Remove any temporary nodes that were previously added
+        self.graph.remove_nodes_from(temp_added_nodes)
+
+        return longest, shortest
+
+    def dijkstra_shortest_path(
+            self,
+            start: Pos,
+            end: Pos,
+            snake_id: Optional[str] = None,
+            return_full_path: Optional[bool] = False
+    ) -> int | tuple[int, list]:
+        """
+        Compute the shortest path between two positions using Dijkstra's algorithm implemented in NetworkX.
+
+        :param start: A location on the board as a Pos object, e.g. Pos({"x": 5, "y": 10})
+        :param end: Another location on the board
+        :param snake_id: The ID of the snake we're finding a path for
+        :param return_full_path: Option to include the complete path identified by the algorithm in the output
+
+        :return: The shortest distance between the start and end inputs (1e6 if no path could be found)
+        """
+        # Running Dijkstra's is time-consuming, so skip over scenarios where the additional accuracy is negligible
+        if (manhattan_approx := start.manhattan_dist(end)) >= 10:
+            return (manhattan_approx, None) if return_full_path else manhattan_approx
 
         start = start.as_tuple()
         end = end.as_tuple()
+        # Ensure the start and end positions exist as nodes on the graph so NetworkX can find a path between them
         check_nodes = [start, end]
-        # Cases where our tail is directly adjacent to our head and in the way of our graph
-        if from_snake is not None:
-            our_snake = self.all_snakes[from_snake]
+        # If a snake tail is directly adjacent to our head, then the tail is a free square TODO: All tails adjacent to our head are free?
+        if snake_id is not None:
+            our_snake = self.all_snakes[snake_id]
             if our_snake.head.manhattan_dist(our_snake.tail) == 1:
                 check_nodes.append(our_snake.tail.as_tuple())
-        # Add in missing nodes
-        temp_graph, temp_added_nodes = self.check_missing_nodes(self.graph, check_nodes)
+        temp_added_nodes = self.check_missing_nodes(self.graph, check_nodes)
 
-        # Run networkx's Dijkstra method (it'll error out if no path is possible)
         try:
-            path = nx.shortest_path(temp_graph, start, end)
+            path = nx.shortest_path(self.graph, start, end)
             shortest = len(path)
         except nx.exception.NetworkXNoPath:
             path = None
             shortest = 1e6
 
         # Remove any temporary nodes that were previously added
-        for temp_nodes in temp_added_nodes:
-            temp_graph.remove_node(temp_nodes)
+        self.graph.remove_nodes_from(temp_added_nodes)
 
-        if get_path:
+        if return_full_path:
             return shortest, path
         else:
             return shortest
 
     @staticmethod
-    def check_missing_nodes(G: nx.Graph, nodes: list[tuple]) -> tuple[nx.Graph, list]:
+    def check_missing_nodes(G: nx.Graph, nodes_to_check: list[tuple]) -> list:
         """
-        A helper function to use with Dijkstra's algorithm implemented in networkx. If the graph representation of the
-        Battlesnake board doesn't contain a node at a desired position, the networkx shortest_path function will error
+        A helper function to use with Dijkstra's algorithm implemented in NetworkX. If the graph representation of the
+        Battlesnake board doesn't contain a node at a desired position, the NetworkX "shortest_path" function will error
         out since it can't compute a path to a non-existent node. This function temporarily adds a node at that position
-        and creates edges to neighbouring nodes, while also outputting the name of that node for later removal.
+        (if it wasn't already present) and creates edges to neighbouring nodes.
 
         :param G: A graph representation of the board
-        :param nodes: The desired start and end locations on the board
+        :param nodes_to_check: A list of nodes to temporarily add to the graph
 
-        :return:
-            A graph with nodes added to the desired start and end positions if they weren't previously there
-            A list of the locations of any added nodes
+        :return: A list of nodes that were temporarily added
         """
-        # If the desired location is on a hazard/snake, then it's absent from the graph, and we want to add in the node
         added_nodes = []
-        for num, node in enumerate(nodes):
-            if not G.has_node(node):
+        node_count = G.number_of_nodes()
+        for node in nodes_to_check:
+            G.add_node(node)
+            # Add edges between the added node and any surrounding nodes
+            x, y = node
+            possible_edges = [(x - 1, y), (x + 1, y), (x, y - 1), (x, y + 1)]
+            for e in possible_edges:
+                if G.has_node(e):
+                    G.add_edge(node, e)
+            # Keep track of any new nodes that were added
+            if (node_count := G.number_of_nodes() - node_count) > 0:
                 added_nodes.append(node)
-                G.add_node(node)
-                x, y = node
-                # Include edges to connect the added node to surrounding nodes if possible
-                possible_edges = [(x - 1, y), (x + 1, y), (x, y - 1), (x, y + 1)]
-                for e in possible_edges:
-                    if G.has_node(e):
-                        G.add_edge(node, e)
-        return G, added_nodes
 
-    def longest_path(self, start: Pos, end: Pos, simple_paths_cutoff: int, threshold: Optional[int] = 0) -> tuple[int, int]:
+        for node in nodes_to_check:
+            assert G.has_node(node)
+        return added_nodes
+
+    def closest_food(self, snake_id, risk_averse=True) -> tuple[int, Pos]:
         """
-        Return the longest path between two positions (relevant during an effort to stall)
+        Compute the shortest distance to food, but ignore any that an opponent snake could reach first or any that could 
+        lead to death via entrapment or edge kill.
 
-        :param start: A location on the board as a Pos object e.g. Pos({"x": 5, "y": 10})
-        :param end: A different location on the board
-        :param threshold:
-
-        :return: The longest distance between the start and end inputs. 1e6 if no path could be found
-        """
-        start = start.as_tuple()
-        end = end.as_tuple()
-        temp_graph, temp_added_nodes = self.check_missing_nodes(self.graph, [start, end])
-
-        longest = 1e6
-        shortest = 1e6
-        # Get all possible paths and filter for the longest one
-        possible_paths = [path for path in nx.all_simple_paths(temp_graph, start, end, cutoff=simple_paths_cutoff)]
-        if len(possible_paths) > 0:
-            longest_path = max(possible_paths, key=lambda path: len(path))
-            longest = len(longest_path) - 1
-            # Now filter for the shortest path longer than the desired threshold
-            shortest = longest
-            if threshold > 0:
-                paths_above_threshold = [path for path in possible_paths if len(path) > threshold]
-                if len(paths_above_threshold) > 0:
-                    shortest_path = min(paths_above_threshold, key=lambda path: len(path))
-                    shortest = len(shortest_path) - 1
-
-        # Remove any temporary nodes that were previously added
-        for temp_nodes in temp_added_nodes:
-            temp_graph.remove_node(temp_nodes)
-
-        return longest, shortest
-
-    def closest_dist_to_food(self, snake_id, risk_averse=True) -> tuple[int, Pos]:
-        """
-        Compute the shortest distance to food for a snake, but only if it's closer to it than an opponent snake
-
-        :param snake_id: The ID of the desired snake we want to find food for
-        :param risk_averse: Avoid any food that an opponent snake is closer to
+        :param snake_id: The ID of the snake we want to find food for
+        :param risk_averse: Option to avoid any food that could lead to our death
 
         :return:
             The shortest distance to food
@@ -293,42 +335,38 @@ class Board:
         you = self.all_snakes[snake_id]
         opponents = [snake for snake in self.all_snakes.values() if snake.id != snake_id]
 
-        best_dist = np.inf
-        best_food = None
+        best_dist, best_food = np.inf, None
         sorted_food = sorted(self.food, key=lambda f: you.head.manhattan_dist(f))  # Pre-sort for efficiency
         for food in sorted_food:
             dist_food = self.dijkstra_shortest_path(food, you.head)
-
-            opp_dist_to_food = 1e6
-            food_edge_killed = False
+            opp_dist_food, food_edge_killed = 1e6, False
+            
+            # The idea is to ignore any food that an opponent can reach first and any food that can lead to an edge kill
             if risk_averse:
                 # Find which opponents are equally close to the same food as us (use the Manhattan distance to estimate)
                 closest_opps = [opp for opp in opponents if opp.head.manhattan_dist(food) <= dist_food]
-                # Then double-check more accurately using Dijkstra's algorithm (to minimise Dijkstra function calls)
+                # Then double-check more accurately using Dijkstra's algorithm (to minimise Dijkstra runtime)
                 if len(closest_opps) > 0:
-                    # If an enemy snake is longer than ours, and we're both 2 squares away from food, then they're
-                    # technically closer to it since they'd win the head-to-head battle
-                    opp_dist_to_food = min(
-                        [self.dijkstra_shortest_path(food, snake.head) - 1 if snake.length >= you.length
-                         else self.dijkstra_shortest_path(food, snake.head)
+                    # A longer enemy snake is technically closer to the same food since it'd win the head-to-head battle
+                    opp_dist_food = min(
+                        [self.dijkstra_shortest_path(food, snake.head) - 1 if (
+                                snake.length >= you.length) else self.dijkstra_shortest_path(food, snake.head) 
                          for snake in closest_opps]
                     )
-
-                # TODO MAKE MORE ROBUST
-                # Avoid getting edge-killed as a result of getting the food
+                # Avoid getting edge-killed from getting the food TODO: entrapment next?
                 if food.x in [0, self.width - 1] or food.y in [0, self.height - 1]:
                     edge_kill_sqs = self.edge_kill_squares(food)
+                    # Check if any enemy snake is on a prime edge-killing square by the time we get to the food
                     for kill_sq in edge_kill_sqs:
-                        closest_edge_kill = [opp for opp in opponents if opp.length > you.length and
-                                             opp.head.manhattan_dist(kill_sq) <= dist_food - 1]
-                        if len(closest_edge_kill) > 0:
+                        closest_edge_killer = [opp for opp in opponents if (
+                                opp.length > you.length and opp.head.manhattan_dist(kill_sq) <= dist_food - 1)]
+                        if len(closest_edge_killer) > 0:
                             food_edge_killed = True
                             break
 
-            # Update the shortest distance
-            if dist_food < best_dist and opp_dist_to_food >= dist_food and not food_edge_killed:
-                best_dist = dist_food
-                best_food = food
+            # Update our snake's shortest computed distance to food if the coast is clear
+            if dist_food < best_dist and opp_dist_food >= dist_food and not food_edge_killed:
+                best_dist, best_food = dist_food, food
             # "Prune" on the first instance that we stop updating
             elif best_food is not None:
                 break
@@ -356,8 +394,8 @@ class Board:
         (e.g. if there's a chance of a head-to-head collision). Can be used in the middle of running the minimax
         algorithm, but make sure to specify the "turn" parameter depending on where we are in the minimax tree.
 
-        :param pos: Any location on the board as a Pos object e.g. Pos({"x": 5, "y": 10})
-        :param snake_id: The ID of the desired snake we're evaluating a move for
+        :param pos: Any location on the board as a Pos object, e.g. Pos({"x": 5, "y": 10})
+        :param snake_id: The ID of the snake we're evaluating a move for
         :param turn: Either "ours", "opponents", "done", or "basic". Addresses nuances with running this function during
             the minimax algorithm or independently.
             - If "ours", this means we're at a depth where our snake has to make a move.
@@ -445,7 +483,7 @@ class Board:
             snake = self.all_snakes[snake_id]
             for rm in snake.body:
                 self.board[rm.x][rm.y] = 0
-            # temp_graph, _ = self.check_missing_nodes(self.graph, [pos.as_tuple() for pos in snake.body])
+            _ = self.check_missing_nodes(self.graph, [pos.as_tuple() for pos in snake.body])
             self.all_snakes.pop(snake_id)
 
     def flood_fill_database(
@@ -481,7 +519,7 @@ class Board:
         Recursive function to get the total available space for a given snake. Basically, count how many £ symbols
         we can fill while avoiding any obstacle symbols
 
-        :param snake_id: The ID of the desired snake we want to do flood fill for
+        :param snake_id: The ID of the snake we want to do flood fill for
         :param risk_averse: If True, flood fill will avoid any squares that directly border a longer opponent's head
         :param confine_to: Tells the function to do flood fill for only on one side of the snake (either "left",
             "right", "up", or "down") to represent its peripheral vision
@@ -578,12 +616,14 @@ class Board:
         heads_in_contact = []
         # board_width, board_height = len(board), len(board[0])
         crop = 6
-        if confine_to is not None:
-            min_x, max_x = 0, len(board)
-            min_y, max_y = 0, len(board[0])
-        else:
-            min_x, max_x = max(0, head.x - crop), min(self.width, head.x + crop)
-            min_y, max_y = max(0, head.y - crop), min(self.height, head.y + crop)
+        min_x, max_x = 0, len(board)
+        min_y, max_y = 0, len(board[0])
+        # if confine_to is not None:
+        #     min_x, max_x = 0, len(board)
+        #     min_y, max_y = 0, len(board[0])
+        # else:
+        #     min_x, max_x = max(0, head.x - crop), min(self.width, head.x + crop)
+        #     min_y, max_y = max(0, head.y - crop), min(self.height, head.y + crop)
         if ff_split:
             fill(head.moved_to("left").x, head.moved_to("left").y, board, initial_square=False, avoid_risk=risk_averse)
             left_filled = sum((row == 50).sum() for row in board)

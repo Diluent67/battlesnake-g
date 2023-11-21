@@ -35,37 +35,33 @@ class Battlesnake:
         :param og_length:
         :param kills_by_depth:
         """
-        self.you = Snake(game_state["you"])
         # Weird edge case when running locally where the "you" snake is not our actual snake
-        if self.you.name not in my_name:
+        if game_state["you"]["name"] not in my_name:
             right_you = [snake_dict for snake_dict in game_state["board"]["snakes"] if snake_dict["name"] in my_name][0]
-            self.you = Snake(right_you)
+            game_state["you"] = right_you
+        # Another weird edge case where our snake is not in the "snakes" field
+        if game_state["you"]["id"] not in [snake_dict["id"] for snake_dict in game_state["board"]["snakes"]]:
+            game_state["board"]["snakes"].append(game_state["you"])
 
-        # Process all snakes as a dictionary of Snake objects with their IDs as a lookup
-        self.all_snakes: dict[str, Snake] = {self.you.id: self.you}
-        for snake_dict in game_state["board"]["snakes"]:
-            if snake_dict["id"] == self.you.id:
-                continue
-            self.all_snakes[snake_dict["id"]] = Snake(snake_dict)
-        # Weird edge case when running locally where our snake is not in the "snakes" field
-        if self.you.id not in self.all_snakes.keys():
-            self.all_snakes[self.you.id] = self.you
+        # Battlesnake game data
+        self.dict = game_state
+        # self.game_id = game_state["game"]["id"]
+        # self.map = game_state["game"]["map"]
+        self.turn = game_state["turn"]
+        self.board = Board(game_state)
+        self.all_snakes = self.board.all_snakes
+        self.you = self.all_snakes[game_state["you"]["id"]]
+
         # For opponent-only lookups
         self.opponents = self.all_snakes.copy()
         self.opponents.pop(self.you.id)
 
-        # Populate our Battlesnake board
-        self.board = Board(game_state["board"], all_snakes=self.all_snakes)
-
-        # General game data
-        self.turn = game_state["turn"]
         # Keep track of our original length and the number of snakes we've killed while traversing the search tree
         self.og_length = self.you.length if og_length is None else og_length
         self.kills_by_depth = [] if kills_by_depth is None else kills_by_depth
         self.killer_intel = None  # Info on which snake we got killed by
 
         # Finish up our constructor
-        self.dict = game_state
         self.minimax_search_depth = 4  # Depth for minimax algorithm
         self.peripheral_size = 3  # Length of our snake's "peripheral vision"
         self.debugging = debugging
@@ -183,7 +179,7 @@ class Battlesnake:
                         possible_killers = [opp for opp in new_game.opponents.values() if opp.head == new_game.you.head]
                         if len(possible_killers) > 0:
                             killer = sorted(possible_killers, key=lambda op: op.length, reverse=True)[0]
-                            distraction_score = new_game.board.closest_dist_to_food(killer.id)[0]
+                            distraction_score = new_game.board.closest_food(killer.id)[0]
                             new_game.killer_intel = (killer.length, distraction_score)
                     # Keep track if our snake was the killer
                     if snake_id != self.you.id and snake.head.manhattan_dist(new_game.you.head) <= 2:
@@ -196,6 +192,7 @@ class Battlesnake:
             # Remove dead snakes from the game except for our own (since all Battlesnake games need a "you" field)
             rm_ids = [rm_id for rm_id, rm_snake in new_game.opponents.items() if rm_snake.dead]
             for rm_id in rm_ids:
+                new_game.board.all_snakes.pop(rm_id, None)
                 new_game.all_snakes.pop(rm_id, None)
                 new_game.opponents.pop(rm_id, None)
 
@@ -217,7 +214,7 @@ class Battlesnake:
         collision_sq = None
         if len(self.board.touch_opps) > 0:
             dist_to_trapped_opp, path_to_trapped_opp = self.board.dijkstra_shortest_path(
-                self.you.head, self.board.touch_opps[0], from_snake=self.you.id, get_path=True)
+                self.you.head, self.board.touch_opps[0], snake_id=self.you.id, return_full_path=True)
             trapped_opp = self.board.identify_snake(self.board.touch_opps[0])
             trapped_opp_moveset = self.get_moveset(trapped_opp.id, risk_averse=True)
             trapped_with_us = True
@@ -259,8 +256,8 @@ class Battlesnake:
             openings_in_boundary = sorted(openings_in_boundary, key=lambda op: self.you.head.manhattan_dist(op))
             opening = openings_in_boundary[0]
             cutoff_path_dist = self.you.head.manhattan_dist(opening) * 2
-            longest_path_to_opening, shortest_path_to_opening = self.board.longest_path(
-                self.you.head, opening, threshold=moves_until_opening, simple_paths_cutoff=cutoff_path_dist)
+            longest_path_to_opening, shortest_path_to_opening = self.board.longest_paths_to_stall(
+                self.you.head, opening, min_length=moves_until_opening, simple_paths_cutoff=cutoff_path_dist)
 
             # See if we can successfully stall until the opening forms
             if collision_sq is None:
@@ -482,7 +479,7 @@ class Battlesnake:
             [self.board.shortest_dist(self.you.head, opp.head) for opp in self.opponents.values()])
 
         # Determine the closest safe distance to food
-        dist_food, best_food = self.board.closest_dist_to_food(self.you.id)
+        dist_food, best_food = self.board.closest_food(self.you.id)
         if best_food is not None:
             logging.info(f"Closest distance to food = {dist_food, best_food.as_dict()}")
         # Determine how important food is
@@ -645,7 +642,7 @@ class Battlesnake:
         for opp in self.opponents.values():
             if opp.length > self.you.length and opp.head.within_bounds(self.you.peripheral_vision(return_pos_only=True)):
                 threats.append(self.board.shortest_dist(self.you.head, opp.head))
-            elif opp.length == self.you.length and self.board.closest_dist_to_food(opp.id)[0] <= 3 and opp.head.within_bounds(
+            elif opp.length == self.you.length and self.board.closest_food(opp.id)[0] <= 3 and opp.head.within_bounds(
                        self.you.peripheral_vision(return_pos_only=True)):
                 threats.append(self.board.shortest_dist(self.you.head, opp.head))
 
@@ -769,7 +766,7 @@ class Battlesnake:
             if not longest_flag:  # We're chilling tbh but need FOOD
                 food_weight = 350
             else:  # compete for food
-                opp_dist_food, opp_best_food = self.board.closest_dist_to_food(closest_opp.id, risk_averse=False)
+                opp_dist_food, opp_best_food = self.board.closest_food(closest_opp.id, risk_averse=False)
                 if len(self.opponents) == 1 and best_food is not None and opp_best_food is not None:
                     if opp_best_food == best_food and opp_dist_food <= dist_food + 2:
                         food_weight = 250
@@ -922,17 +919,22 @@ class Battlesnake:
             opps_scores: list[tuple[str, float]] = []  # Estimate the quality of the move with a simple heuristic
             for opp_num, (opp_id, opp_snake) in enumerate(self.opponents.items()):
                 opp_moves = self.get_moveset(opp_id, both_risk_options=True)
+                opp_suicide = False
                 if len(opp_moves) == 0:  # If the opponent has no legal moves, move down and die
                     opp_moves = ["down"]
+                    opp_suicide = True
                 # Assume our opponents are smart - for each possible move, compute how beneficial it'd be for them
                 # Opponent heuristic => favours proximity to our snake, more space, longer length, and penalises death
                 opp_scores = []
                 for move in opp_moves:
+                    if opp_suicide:
+                        opp_scores.append((opp_id, 1e6))
+                        continue
                     moved_head = opp_snake.head.moved_to(move)
                     dist_from_us = self.board.shortest_dist(self.you.head, moved_head)
                     opp_space = self.board.flood_fill(opp_id, risk_averse=False, confine_to=move)
                     opp_dist_to_food = min([1e6] + [moved_head.manhattan_dist(food) for food in self.board.food])
-                    our_dist_to_food, _ = self.board.closest_dist_to_food(self.you.id, risk_averse=False)
+                    our_dist_to_food, _ = self.board.closest_food(self.you.id, risk_averse=False)
                     opp_aggression = (opp_snake.length > self.you.length and
                                       (moved_head.manhattan_dist(self.you.head) <= self.board.width // 2 or
                                       opp_dist_to_food * 3 < our_dist_to_food))
@@ -960,13 +962,13 @@ class Battlesnake:
                 if cut_opp_moves is not None:
                     opps_moves[opp_id] = cut_opp_moves
                     opps_scores.extend(cut_opp_scores)
-                    logging.info(f"Snake {opp_num + 1} possible moves: {opp_moves} -> "                
+                    logging.info(f"Snake {opp_num + 2} possible moves: {opp_moves} -> "                
                                  f"{[round(score[1], 2) for score in opp_scores[-len(opp_moves):]]} "
                                  f"but cut to {cut_opp_moves}")
                 else:
                     opps_moves[opp_id] = opp_moves
                     opps_scores.extend(opp_scores)
-                    logging.info(f"Snake {opp_num + 1} possible moves: {opp_moves} -> "
+                    logging.info(f"Snake {opp_num + 2} possible moves: {opp_moves} -> "
                                  f"{[round(score[1], 2) for score in opp_scores[-len(opp_moves):]]}")
 
             # Determine the maximum number of move combinations

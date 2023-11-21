@@ -4,21 +4,21 @@ game_state={"game":{"id":"d07d4832-3fbc-4df7-bc1f-84909baa01a2","ruleset":{"name
 # Time-consuming
 # game_state = {"game":{"id":"ee187fa6-1b1a-4ced-9783-f928d75e5b8c","ruleset":{"name":"standard","version":"?","settings":{"foodSpawnChance":15,"minimumFood":1}},"map":"standard","timeout":500,"source":"custom"},"turn":122,"board":{"width":11,"height":11,"food":[{"x":0,"y":0}],"hazards":[],"snakes":[{"id":"gs_v3QBMtmqBWRxYfmFyDHtJM88","name":"NightwingV2","health":100,"body":[{"x":0,"y":2},{"x":1,"y":2},{"x":2,"y":2},{"x":3,"y":2},{"x":3,"y":3},{"x":4,"y":3},{"x":4,"y":4},{"x":4,"y":5},{"x":5,"y":5},{"x":6,"y":5},{"x":7,"y":5},{"x":8,"y":5},{"x":8,"y":4},{"x":8,"y":4}],"latency":109,"head":{"x":0,"y":2},"length":14,"shout":"","squad":"","customizations":{"color":"#1f51ff","head":"silly","tail":"mlh-gene"}},{"id":"gs_mBj6TQXj3gq7rTmwx6tSWWy6","name":"Nightwing","health":96,"body":[{"x":5,"y":9},{"x":4,"y":9},{"x":3,"y":9},{"x":3,"y":8},{"x":4,"y":8},{"x":4,"y":7},{"x":3,"y":7},{"x":3,"y":6},{"x":4,"y":6},{"x":5,"y":6},{"x":6,"y":6},{"x":7,"y":6},{"x":8,"y":6}],"latency":118,"head":{"x":5,"y":9},"length":13,"shout":"","squad":"","customizations":{"color":"#3333ff","head":"ski","tail":"mystic-moon"}}]},"you":{"id":"gs_v3QBMtmqBWRxYfmFyDHtJM88","name":"NightwingV2","health":100,"body":[{"x":0,"y":2},{"x":1,"y":2},{"x":2,"y":2},{"x":3,"y":2},{"x":3,"y":3},{"x":4,"y":3},{"x":4,"y":4},{"x":4,"y":5},{"x":5,"y":5},{"x":6,"y":5},{"x":7,"y":5},{"x":8,"y":5},{"x":8,"y":4},{"x":8,"y":4}],"latency":109,"head":{"x":0,"y":2},"length":14,"shout":"","squad":"","customizations":{"color":"#1f51ff","head":"silly","tail":"mlh-gene"}}}
 clock_in = time.time_ns()
-game = Battlesnake(game_state, debugging=False)
+game = Battlesnake(game_state, debugging=True)
 print(game.optimal_move())
 print(f"Done in {round((time.time_ns() - clock_in) / 1000000, 3)} ms")
 
 
-import cProfile, pstats
-profiler = cProfile.Profile()
-profiler.enable()
-game.optimal_move()
-profiler.disable()
-stats = pstats.Stats(profiler).sort_stats('tottime')
-stats.print_stats()
-print("\n\n")
-stats = pstats.Stats(profiler).sort_stats('cumtime')
-stats.print_stats()
+# import cProfile, pstats
+# profiler = cProfile.Profile()
+# profiler.enable()
+# game.optimal_move()
+# profiler.disable()
+# stats = pstats.Stats(profiler).sort_stats('tottime')
+# stats.print_stats()
+# print("\n\n")
+# stats = pstats.Stats(profiler).sort_stats('cumtime')
+# stats.print_stats()
 # import timeit
 # start = timeit.default_timer()
 # print("The start time is :", start)
