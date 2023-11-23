@@ -290,7 +290,7 @@ class Battlesnake:
         # Establish who the snake is and who the possible killers are
         snake = self.all_snakes[snake_id]
         opponents = [opp for opp in self.all_snakes.values() if snake.id != opp.id]
-        possible_moves = self.get_moveset(snake.id, risk_averse=True, turn="basic")
+        possible_moves = self.get_moveset(snake.id, risk_averse=True, turn="static")
         direction = snake.facing_direction()
 
         # A small database that covers different edge kill scenarios
@@ -339,7 +339,7 @@ class Battlesnake:
                         strip = board[getattr(snake.head, ax_dir):, esc_move] if scan_dir == +1 \
                             else board[:(getattr(snake.head, ax_dir) + 1), esc_move][::-1]
                     # Check if we're trapped by our own body
-                    if strip[0] == "0" and snake_id == self.you.id:
+                    if strip[0] == 1 and snake_id == self.you.id:
                         # First check if our body's blocking our path ahead
                         if ax == "x":
                             our_strip = board[getattr(snake.head, ax), getattr(snake.head, ax_dir):] if scan_dir == +1 \
@@ -347,8 +347,8 @@ class Battlesnake:
                         else:
                             our_strip = board[getattr(snake.head, ax_dir):, getattr(snake.head, ax)] if scan_dir == +1 \
                                 else board[:(getattr(snake.head, ax_dir) + 1), getattr(snake.head, ax)][::-1]
-                        if "0" in our_strip:
-                            self_collision_dist = our_strip.tolist().index("0")
+                        if 1 in our_strip:
+                            self_collision_dist = our_strip.tolist().index(1)
                             self_collision_pos = self.you.head.moved_to(direction, distance=self_collision_dist)
                             # If our tail doesn't get out of our way in time, we're doomed
                             if len(self.you.body) - self.you.body.index(self_collision_pos) > self_collision_dist:
@@ -362,9 +362,9 @@ class Battlesnake:
                         #     trapped_by_ourselves = True
                         #     continue
                     # If there's an opponent head there, we might be getting edge-killed
-                    elif "H" in strip:
+                    elif 10 in strip:
                         # Examine the portion preceded by the opponent head (verify there aren't any gaps)
-                        danger_strip = strip[:np.where(strip == "H")[0][0]]
+                        danger_strip = strip[:np.where(strip == 10)[0][0]]
                         # Identify the killer
                         if ax == "x":
                             opp_loc = Pos({"x": esc_move,
@@ -381,13 +381,13 @@ class Battlesnake:
                         # Check if the opponent is going the same direction as us (it's not yet an edge kill if not)
                         elif opp_killer.facing_direction() == direction:
                             # Check if there are gaps between us and the killer, we're dead if there's none
-                            if np.count_nonzero(danger_strip == " ") == 0:
+                            if np.count_nonzero(danger_strip == 0) == 0:
                                 trapped_sides[num] = True
                                 edge_killers[num] = opp_killer
                                 continue
                     else:
                         # Check to see if there's free space for us to escape to or if we're trapped
-                        if self.trapped and np.count_nonzero(strip == " ") == 0:
+                        if self.trapped and np.count_nonzero(strip == 0) == 0:
                             trapped_sides[num] = True
                             continue
 
@@ -416,7 +416,7 @@ class Battlesnake:
                                 else board[:(getattr(snake.head, ax_dir) + 1), esc_move_x2][::-1]
                     # If there's a longer snake in either of those two locations, we might be getting edge-killed
                     opp_killers = [opp for opp in opponents if (  # TODO cleanup
-                            opp.length > snake.length or (opp.length == snake.length and "f" in threat_strip)) and (
+                            opp.length > snake.length or (opp.length == snake.length and 100 in threat_strip)) and (
                             (opp.head == threat_behind and direction in self.get_moveset(opp.id)) or
                             opp.head == threat_two_over)]
                     if len(opp_killers) > 0:
@@ -702,40 +702,40 @@ class Battlesnake:
                 cutoff_bonus += (cutoff_bonus / (1 + cutting_off))
 
 
-        # # Can we get cut off?
-        # opps_nearby = [opp for opp in self.opponents.values() if self.you.head.manhattan_dist(opp.head) <= 4]
-        # if 0 < len(opps_nearby) <= 2 or len(self.opponents) == 1:
-        #     # if cutting_off is not None:
-        #     #     us_cutoff = cutting_off
-        #     # else:
-        #     #     us_cutoff = self.board.flood_fill(closest_opp.id, opp_cutoff=self.you.id)
-        #     # opp_cutoff = self.board.flood_fill(self.you.id, opp_cutoff=closest_opp.id)
-        #
-        #     if len(self.opponents) == 1:
-        #         if cutting_off is not None:
-        #             us_cutoff = cutting_off
-        #         else:
-        #             us_cutoff = self.board.flood_fill(closest_opp.id, opp_cutoff=self.you.id)
-        #         opp_cutoff = self.board.flood_fill(self.you.id, opp_cutoff=closest_opp.id)
-        #     else:
-        #         us_cutoff = self.board.flood_fill(opps_nearby[0].id, opp_cutoff=self.you.id)
-        #         opp_cutoff = self.board.flood_fill(self.you.id, opp_cutoff=opps_nearby[0].id)
-        #     if self.you.length < closest_opp.length:
-        #         if opp_cutoff < 15:
-        #             if space_penalty == 0:
-        #                 space_penalty = -500
-        #     else:
-        #         if opp_cutoff <= 15 and us_cutoff > opp_cutoff:  # Penalise if we're in a worse position
-        #             if space_penalty == 0:
-        #                 space_penalty = -500
-        #                 if aggression_weight > 500:
-        #                     aggression_weight /= 10
-        #                 if incr_length_weight > 1000:
-        #                     incr_length_weight /= 10
-        #                 if kill_bonus > 0 and opp_cutoff <= 5:  # If we kill but get killed anyways
-        #                     kill_bonus = 0
-        #             if cutoff_bonus > 0:  # Reduce the cutoff if we're the ones getting cut off lol
-        #                 cutoff_bonus = 0
+        # Can we get cut off?
+        opps_nearby = [opp for opp in self.opponents.values() if self.you.head.manhattan_dist(opp.head) <= 4]
+        if 0 < len(opps_nearby) <= 2 or len(self.opponents) == 1:
+            # if cutting_off is not None:
+            #     us_cutoff = cutting_off
+            # else:
+            #     us_cutoff = self.board.flood_fill(closest_opp.id, opp_cutoff=self.you.id)
+            # opp_cutoff = self.board.flood_fill(self.you.id, opp_cutoff=closest_opp.id)
+
+            if len(self.opponents) == 1:
+                if cutting_off is not None:
+                    us_cutoff = cutting_off
+                else:
+                    us_cutoff = self.board.flood_fill(closest_opp.id, opp_cutoff=self.you.id)
+                opp_cutoff = self.board.flood_fill(self.you.id, opp_cutoff=closest_opp.id)
+            else:
+                us_cutoff = self.board.flood_fill(opps_nearby[0].id, opp_cutoff=self.you.id)
+                opp_cutoff = self.board.flood_fill(self.you.id, opp_cutoff=opps_nearby[0].id)
+            if self.you.length < closest_opp.length:
+                if opp_cutoff < 15:
+                    if space_penalty == 0:
+                        space_penalty = -500
+            else:
+                if opp_cutoff <= 15 and us_cutoff > opp_cutoff:  # Penalise if we're in a worse position
+                    if space_penalty == 0:
+                        space_penalty = -500
+                        if aggression_weight > 500:
+                            aggression_weight /= 10
+                        if incr_length_weight > 1000:
+                            incr_length_weight /= 10
+                        if kill_bonus > 0 and opp_cutoff <= 5:  # If we kill but get killed anyways
+                            kill_bonus = 0
+                    if cutoff_bonus > 0:  # Reduce the cutoff if we're the ones getting cut off lol
+                        cutoff_bonus = 0
 
         # if space_penalty < 0:
         #     length_weight = 100
