@@ -256,7 +256,7 @@ def display_board(self, board: Optional[np.array] = None, return_string: Optiona
         snake_monitor = {}  # A dictionary for each snake showing whether they're alive
         for snake_id, snake in self.all_snakes.items():
             # Check that the snake is on a safe square (depending on if we're at a depth where only we've made a move)
-            is_safe, _ = self.board.is_pos_safe(snake.head, snake_id, turn="done" if depth % 2 == 0 else "ours")
+            is_safe, _ = self.board.evaluate_pos(snake.head, snake_id, turn="done" if depth % 2 == 0 else "ours")
             snake_monitor[snake_id] = is_safe
 
         # Game is over if there's only one snake remaining or if our snake died

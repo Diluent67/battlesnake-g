@@ -86,7 +86,7 @@ class Battlesnake:
         :param risk_averse: Avoid any chance of a death-inducing collision (we're assuming our opponents are out to get
             us, but only if they're longer). Set False to include these risky moves in our final moveset.
         :param turn: Either "ours", "opponents", "done", or "basic". Addresses nuances with running this function during
-            the minimax algorithm or independently. Refer to the docstring in Board.is_pos_safe for more details.
+            the minimax algorithm or independently. Refer to the docstring in Board.evaluate_pos for more details.
         :param sort_by_dist_to: Input any snake ID here. This will return all possible moves, but sort the moves by the
             distance from this snake (after making the move) to the head of the snake whose ID was inputted. Very useful
             for discerning which moves are more threatening or bring us closer to a different snake.
@@ -101,9 +101,9 @@ class Battlesnake:
         moveset = ["up", "down", "left", "right"]
         risky_moves = []
         if turn is None:
-            turn = "ours" if snake_id == self.you.id else "opponents"
+            turn = "you" if snake_id == self.you.id else "opponents"
         for move in moveset.copy():
-            is_safe, is_risky = self.board.is_pos_safe(head.moved_to(move), snake_id, turn=turn)
+            is_safe, is_risky = self.board.evaluate_pos(head.moved_to(move), snake_id, turn_type=turn)
             if not is_safe:
                 moveset.remove(move)
             elif is_risky:
@@ -171,7 +171,7 @@ class Battlesnake:
         # Check if any snakes died as a result of the simulation
         if evaluate_deaths:
             for snake_id, snake in new_game.all_snakes.items():
-                valid_move, _ = new_game.board.is_pos_safe(snake.head, snake_id, turn="done")
+                valid_move, _ = new_game.board.evaluate_pos(snake.head, snake_id, turn_type="over")
                 if not valid_move:  # TODO any snake that died can technically be a free space?
                     snake.dead = True
                     # Check if we got killed by an enemy snake and gather intel to compute a killer penalty score later
@@ -462,7 +462,7 @@ class Battlesnake:
         # Remove other snakes that we're not edge-killing who's def dead
         if len(self.opponents) >= 2:
             basically_dead_opps = [opp.id for opp in self.opponents.values() if opp_periphs[opp.id] < 1 and self.you.head.manhattan_dist(opp.head) >= 5]
-            self.board.remove_snake(basically_dead_opps)
+            self.board.remove_snakes(basically_dead_opps)
             for dead_opp in basically_dead_opps:
                 # self.all_snakes.pop(dead_opp)
                 self.opponents.pop(dead_opp)
@@ -817,7 +817,7 @@ class Battlesnake:
         """
         # If we're not at the bottom of the search tree, check if our snake died
         if depth != self.minimax_search_depth and self.turn > 0:
-            alive = not self.you.dead  # self.board.is_pos_safe(self.you.head, self.you.id, turn="done" if depth % 2 == 0 else "ours")
+            alive = not self.you.dead  # self.board.evaluate_pos(self.you.head, self.you.id, turn="done" if depth % 2 == 0 else "ours")
             game_over = len(self.opponents) == 0
             if not alive:
                 killer_penalty = 0

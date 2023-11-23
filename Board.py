@@ -19,7 +19,6 @@ class Board:
         board_dict = game_state["board"]
         self.width = board_dict["width"]
         self.height = board_dict["height"]
-        self.turn = game_state["turn"]
 
         # Process food locations as Pos objects, but skip if previously done
         food_locs = board_dict.get("food", [])
@@ -37,7 +36,7 @@ class Board:
 
         # Process all snakes as a dictionary of Snake objects with their IDs as lookups
         you_snake = Snake(game_state["you"])
-        self.all_snakes: dict[str, Snake] = {you_snake.id: you_snake}   # Our snake should be the first in line
+        self.all_snakes: dict[str, Snake] = {you_snake.id: you_snake}   # Our snake should be the first one
         for snake_dict in board_dict["snakes"]:
             if snake_dict["id"] == you_snake.id:
                 continue
@@ -56,7 +55,7 @@ class Board:
             50: "£",  # Starting point for flood fill
             100: "f",  # Food
             255: "x",  # Hazards or off-limit squares
-            "O": "O", " ": " "  # For visualising nodes
+            "O": "O"  # For visualising nodes with "display_graph"
         }
 
     def as_dict(self):
@@ -96,7 +95,7 @@ class Board:
         for snake_num, snake in enumerate(self.all_snakes.values()):
             skip_tail = snake.body[-2] == snake.tail
             for pos_num, pos in enumerate(snake.body):
-                if (skip_tail and pos_num == len(snake.body) - 1) or (self.turn <= 1 and pos_num > 0):
+                if skip_tail and pos_num == len(snake.body) - 1:
                     continue
 
                 self.board[pos.x, pos.y] = 10 if pos_num == 0 else snake_num + 1
@@ -136,7 +135,6 @@ class Board:
         """
         board = self.board if board is None else board
         board_str = ""
-
         for j in range(1, len(board[0]) + 1):
             display_row = f"{self.height - j}\t "
             for i in range(0, len(board)):
@@ -156,7 +154,7 @@ class Board:
 
     def display_graph(self, show: Optional[bool] = True) -> str:
         """Convert the board's NetworkX graph representation into a nicely formatted string for convenient debugging."""
-        board = np.full((self.width, self.height), " ")
+        board = np.full((self.width, self.height), 0)
         for node in self.graph.nodes:
             board[node[0], node[1]] = "O"
         return self.display(board=board, show=show)
@@ -316,8 +314,6 @@ class Board:
             if (node_count := G.number_of_nodes() - node_count) > 0:
                 added_nodes.append(node)
 
-        for node in nodes_to_check:
-            assert G.has_node(node)
         return added_nodes
 
     def closest_food(self, snake_id, risk_averse=True) -> tuple[int, Pos]:
@@ -353,7 +349,7 @@ class Board:
                                 snake.length >= you.length) else self.dijkstra_shortest_path(food, snake.head) 
                          for snake in closest_opps]
                     )
-                # Avoid getting edge-killed from getting the food TODO: entrapment next?
+                # Look ahead to avoid getting edge-killed from getting the food TODO: entrapment next?
                 if food.x in [0, self.width - 1] or food.y in [0, self.height - 1]:
                     edge_kill_sqs = self.edge_kill_squares(food)
                     # Check if any enemy snake is on a prime edge-killing square by the time we get to the food
@@ -373,35 +369,27 @@ class Board:
 
         return best_dist, best_food
 
-    def edge_kill_squares(self, pos):
-        if pos.x == 0:
-            return Pos({"x": pos.x + 1, "y": pos.y}), Pos({"x": pos.x + 2, "y": pos.y})
-        if pos.x == self.width - 1:
-            return Pos({"x": pos.x - 1, "y": pos.y}), Pos({"x": pos.x - 2, "y": pos.y})
-        if pos.y == 0:
-            return Pos({"x": pos.x, "y": pos.y + 1}), Pos({"x": pos.x, "y": pos.y + 2})
-        if pos.y == self.height - 1:
-            return Pos({"x": pos.x, "y": pos.y - 1}), Pos({"x": pos.x, "y": pos.y - 2})
-
-    def is_pos_safe(
+    def evaluate_pos(
             self,
             pos: Pos,
             snake_id: str,
-            turn: Optional[str] = "done"
+            turn_type: Optional[str] = "over"
     ) -> tuple[bool, bool]:
         """
         Determine if a location on the board is safe (e.g. if it's out-of-bounds or hits a different snake) or risky
         (e.g. if there's a chance of a head-to-head collision). Can be used in the middle of running the minimax
-        algorithm, but make sure to specify the "turn" parameter depending on where we are in the minimax tree.
+        algorithm, but collision rules (e.g. when it's okay to go to a square occupied by a tail) may vary depending on
+        whose turn it is during the tree search, so specify the "turn_type" parameter as necessary.
 
         :param pos: Any location on the board as a Pos object, e.g. Pos({"x": 5, "y": 10})
-        :param snake_id: The ID of the snake we're evaluating a move for
-        :param turn: Either "ours", "opponents", "done", or "basic". Addresses nuances with running this function during
-            the minimax algorithm or independently.
-            - If "ours", this means we're at a depth where our snake has to make a move.
-            - If "opponents", then we're at a depth where we've made a move but the opponent snakes haven't.
-            - If "done", then both our snake and the opponents' have made moves (and 1 full turn has been completed).
-            - If "basic", then only check to see if the snake goes out-of-bounds or hits any snake without considering
+        :param snake_id: The ID of the snake we're evaluating a position for
+        :param turn_type: Either "you", "opponents", "over", or "basic". Addresses nuances with running this function
+            during the minimax tree search or independently.
+            - If "you", this means we're at a depth where our snake has to make a move.
+            - If "opponents", then we're at a depth where we've made a move, but the opponent snakes haven't.
+            - If "over", then both our snake and the opponents' have made moves (and 1 full turn has been completed).
+                Useful to determine which snakes have died or not.
+            - If "static", then only check to see if the snake goes out-of-bounds or hits any snake without considering
                 collisions (for flood fill purposes).
 
         :return:
@@ -418,36 +406,41 @@ class Board:
         if pos in self.hazards:
             return False, True
 
-        # Prevent snake from colliding with other snakes
+        # Prevent snake from colliding with other snakes. While traversing the minimax search tree, collision rules will
+        # differ depending on whose turn it is since our snake makes moves separately from opponent snakes.
         length = self.all_snakes[snake_id].length
         risky_flag = False
         for opp_num, (opp_id, opp_snake) in enumerate(self.all_snakes.items()):
 
-            # Different rules apply during the middle of running minimax, depending on whose turn it is since our snake
-            # makes moves separately from opponent snakes
-            if turn == "ours":
+            if turn_type == "you":
                 # We can run into the tail of any snake since it will have to move forward
                 if snake_id != opp_id and pos in opp_snake.body[:-1]:
                     return False, True
-                # Weird edge cases where our head is fed into the function (it's technically safe)
+                # Weird edge case where our head is fed into the function (it's technically safe)
                 elif snake_id == opp_id and pos in opp_snake.body[1:-1]:
                     return False, True
                 # Flag a move as risky if it could lead to a losing head-to-head collision
                 elif (snake_id != opp_id  # Skip the same snake we're evaluating
                       and length <= opp_snake.length  # Only if the other snake is the same length or longer
                       and pos.manhattan_dist(opp_snake.head) <= 2):  # Only if we're collision-bound
+                    if pos.manhattan_dist(opp_snake.head) == 2:  # TODO: why did we put 2?
+                        print(pos.as_tuple())
+                        print(opp_snake.head.as_tuple())
+                        self.display()
+                        raise ValueError
                     risky_flag = True
 
-            elif turn == "opponents":
-                if opp_num == 0:  # Specific situations against our snake
+            elif turn_type == "opponents":
+                # Specific situations against our snake
+                if opp_num == 0:
                     # Our snake's tail is off-limits since we will already have moved
                     if pos in opp_snake.body[1:]:
                         return False, True
-                    # Avoid losing head-to-head collisions with our snake. Suicidal collisions (when our snake is the
+                    # Avoid losing head-to-head collisions with our snake. Suicidal collisions (when both snakes are the
                     # same length) are risky, but technically still safe
                     elif pos == opp_snake.head:
                         if length < opp_snake.length:
-                            return False, True
+                            return False, True  # TODO: Can an enemy snake just kill itself?
                         elif length == opp_snake.length:
                             return True, True
                 else:
@@ -460,7 +453,7 @@ class Board:
                           and pos.manhattan_dist(opp_snake.head) == 1):  # Only if we're collision-bound
                         risky_flag = True
 
-            elif turn == "done":
+            elif turn_type == "over":
                 # Move is invalid if it collides with the body of any snake
                 if pos in opp_snake.body[1:]:
                     return False, True
@@ -468,7 +461,7 @@ class Board:
                 elif snake_id != opp_id and pos == opp_snake.head and length <= opp_snake.length:
                     return False, True
 
-            elif turn == "basic":
+            elif turn_type == "static":
                 if pos in opp_snake.body:
                     return False, True
                 elif (snake_id != opp_id  # Skip the same snake we're evaluating
@@ -478,29 +471,83 @@ class Board:
 
         return True, risky_flag
 
-    def remove_snake(self, snake_ids: list):
+    def remove_snakes(self, snake_ids: list[str]):
+        """Manually remove a set of snakes from the board. Might be prone to errors if there's an overlapping snake."""
         for snake_id in snake_ids:
             snake = self.all_snakes[snake_id]
             for rm in snake.body:
-                self.board[rm.x][rm.y] = 0
-            _ = self.check_missing_nodes(self.graph, [pos.as_tuple() for pos in snake.body])
+                self.board[rm.x, rm.y] = 0
+            self.check_missing_nodes(self.graph, [pos.as_tuple() for pos in snake.body])
             self.all_snakes.pop(snake_id)
 
-    def flood_fill_database(
-            self,
-            initialise: Optional[bool] = False,
-            add: Optional[bool] = False,
-            check: Optional[bool] = False
-    ):
-        if initialise:
-            ff_db = {}
-            for snake in self.all_snakes.values():
-                ff_db[snake.id] = {"full_package": [], "confine_to": [], }
-        if add:
-            pass
-        if check:
-            pass
+    def edge_kill_squares(self, pos: Pos) -> tuple[Pos, Pos]:
+        """If we're on the edge of the board, we're vulnerable to kills if there's an opponent on these 2 squares."""
+        if pos.x == 0:
+            return Pos({"x": pos.x + 1, "y": pos.y}), Pos({"x": pos.x + 2, "y": pos.y})
+        elif pos.x == self.width - 1:
+            return Pos({"x": pos.x - 1, "y": pos.y}), Pos({"x": pos.x - 2, "y": pos.y})
+        elif pos.y == 0:
+            return Pos({"x": pos.x, "y": pos.y + 1}), Pos({"x": pos.x, "y": pos.y + 2})
+        elif pos.y == self.height - 1:
+            return Pos({"x": pos.x, "y": pos.y - 1}), Pos({"x": pos.x, "y": pos.y - 2})
 
+    # def flood_fill_database(
+    #         self,
+    #         initialise: Optional[bool] = False,
+    #         add: Optional[bool] = False,
+    #         check: Optional[bool] = False
+    # ):
+    #     if initialise:
+    #         ff_db = {}
+    #         for snake in self.all_snakes.values():
+    #             ff_db[snake.id] = {"full_package": [], "confine_to": [], }
+    #     if add:
+    #         pass
+    #     if check:
+    #         pass
+
+    def fast_flood_fill(
+            self,
+            snake_id: str,
+            risk_averse: Optional[bool] = True,
+            full_package: Optional[bool] = False,
+    ):
+        board = copy.deepcopy(self.board).astype(np.uint8)
+        snake = self.all_snakes[snake_id]
+        head = snake.head
+        board[head.x, head.y] = 0
+
+        # Cases where our tail is directly adjacent to our head and therefore in the way of our flood fill TODO: opponent tail as well?
+        if head.manhattan_dist(snake.tail) == 1:
+            board[snake.tail.x, snake.tail.y] = 0
+
+        # Avoid any squares that could lead to a losing head-to-head collision
+        risky_squares = []
+        if risk_averse:
+            possible_threats = [opp.head for opp in self.all_snakes.values() if (
+                    opp.id != snake_id and opp.length >= snake.length)]
+            for threat in possible_threats:
+                for risky_pos in threat.adjacent_pos(self.width, self.height):
+                    if board[risky_pos.x, risky_pos.y] not in self.obstacles:
+                        board[risky_pos.x, risky_pos.y] = 255
+                        risky_squares.append(risky_pos)
+
+        mask = np.zeros(np.array(board.shape) + 2, dtype=np.uint8)
+        start_pt = head.as_tuple()
+        retval, _, _, _ = cv2.floodFill(board, mask, start_pt[::-1], 50, flags=4 | cv2.FLOODFILL_MASK_ONLY)
+        mask = 1 - mask[1:-1, 1:-1]  # 1s represent the barriers to the flood fill
+        contours, _ = cv2.findContours(mask, cv2.RETR_LIST, cv2.CHAIN_APPROX_NONE)
+
+        if full_package:
+            # Repeat but assume all risky squares are fair game
+            for risky_sq in risky_squares:
+                board[risky_sq.x, risky_sq.y] = 0
+
+            mask = np.zeros(np.array(board.shape) + 2, dtype=np.uint8)
+            retval_ra, _, _, _ = cv2.floodFill(board, mask, start_pt[::-1], 50, flags=4 | cv2.FLOODFILL_MASK_ONLY)
+            return retval, retval_ra
+
+        return retval
 
     def flood_fill(
             self,
@@ -516,19 +563,18 @@ class Board:
             ff_split: Optional[bool] = False
     ) -> int | tuple[int, list[Pos]]:
         """
-        Recursive function to get the total available space for a given snake. Basically, count how many £ symbols
-        we can fill while avoiding any obstacle symbols
+        Get the total available space for a given snake.
 
         :param snake_id: The ID of the snake we want to do flood fill for
-        :param risk_averse: If True, flood fill will avoid any squares that directly border a longer opponent's head
-        :param confine_to: Tells the function to do flood fill for only on one side of the snake (either "left",
-            "right", "up", or "down") to represent its peripheral vision
-        :param confined_dist:
+        :param risk_averse: Option to avoid any squares that directly border a longer opponent's head
+        :param confine_to: Tells the function to do flood fill on only one side of the snake (either "left", "right",
+            "up", or "down") to represent its peripheral vision
+        :param confined_dist: Paired with "confine_to" to determine the depth of the snake's peripheral vision
         :param fast_forward: Hypothetical scenarios where we want to see how much space we still have after moving
             X turns ahead. E.g. if we set it to 5, then we remove 5 squares from all snake's tails before doing flood
             fill - this is only useful when we suspect we'll be trapped by an opponent snake.
-        :param opp_cutoff: Input any opponent snake ID and see how much space we still have after our opponent "cuts off"
-            our space. E.g. assume the opponent keeps going forward until it meets the edge of the board or an obstacle.
+        :param opp_cutoff: Input any opponent snake IDs and see how much space we still have after they "cut off" our
+            space. Assume the opponents keep going forward until they meet the edge of the board or an obstacle.
         :param get_boundaries: Option to return a list of positions that represent the edges of our flood fill
         :param get_touching_opps: Option to return a list of other snakes whose heads our flood fill is touching
         :param full_package: Option to run 4 parameters at once with a single function call: risk_averse=True,
@@ -548,39 +594,38 @@ class Board:
             for snake in self.all_snakes.values():
                 remove_tail = max(-snake.length + 1, -fast_forward)
                 for rm in snake.body[remove_tail:]:
-                    board[rm.x][rm.y] = 0
+                    board[rm.x, rm.y] = 0
 
-        # Cases where our tail is directly adjacent to our head and in the way of our flood fill
+        # Cases where our tail is directly adjacent to our head and therefore in the way of our flood fill TODO: opponent tail as well?
         if head.manhattan_dist(snake.tail) == 1:
-            board[snake.tail.x][snake.tail.y] = 0
+            board[snake.tail.x, snake.tail.y] = 0
 
         # Avoid any squares that could lead to a losing head-to-head collision
         risky_squares = []
         if risk_averse:
-            possible_threats = [opp.head for opp in self.all_snakes.values() if opp.id != snake_id and
-                                opp.length >= snake.length]
+            possible_threats = [opp.head for opp in self.all_snakes.values() if (
+                    opp.id != snake_id and opp.length >= snake.length)]
             for threat in possible_threats:
                 for risky_pos in threat.adjacent_pos(self.width, self.height):
-                    if board[risky_pos.x][risky_pos.y] not in self.obstacles:
-                        board[risky_pos.x][risky_pos.y] = 255
+                    if board[risky_pos.x, risky_pos.y] not in self.obstacles:
+                        board[risky_pos.x, risky_pos.y] = 255
                         risky_squares.append(risky_pos)
 
         # See what happens if an opponent were to keep moving forward and "cut off" our space
         if opp_cutoff:
             opp_snake = self.all_snakes[opp_cutoff]
-            opp_new_head = opp_snake.head.moved_to(opp_snake.facing_direction(), 1)
-            moved_ahead = 1
-            while not self.is_pos_safe(opp_new_head, opp_cutoff, turn="basic")[1]:
-                board[opp_new_head.x][opp_new_head.y] = 255
-                opp_new_head = opp_new_head.moved_to(opp_snake.facing_direction(), 1)
-                moved_ahead += 1
+            opp_dir = opp_snake.facing_direction()
+            opp_new_head = opp_snake.head.moved_to(opp_dir, 1)
+            while not self.evaluate_pos(opp_new_head, opp_cutoff, turn_type="static")[1]:
+                board[opp_new_head.x, opp_new_head.y] = 255
+                opp_new_head = opp_new_head.moved_to(opp_dir, 1)
 
         # Narrow down a portion of the board that represents the snake's peripheral vision
         if confine_to is not None:
             xs, ys, new_head = snake.peripheral_vision(
                 confine_to, dist=confined_dist, width=self.width, height=self.height)
             board = board[xs[0]:xs[1], ys[0]:ys[1]]
-            # Account for the board change
+            # Account for the board change if we're running the full package
             if full_package:
                 shifted_risky_squares = []
                 for risky_pos in risky_squares:
@@ -593,7 +638,7 @@ class Board:
             head = new_head
 
         def fill(x, y, board, initial_square, avoid_risk):
-            if board.shape[0] == 0 or board.shape[1] == 0:  # Empty board
+            if board.shape[0] == 0 or board.shape[1] == 0:  # Empty board TODO: remove from recursive
                 return
             if board[x][y] == self.obstacles[0]:  # Opponent snake heads
                 heads_in_contact.append(Pos({"x": x, "y": y}))
