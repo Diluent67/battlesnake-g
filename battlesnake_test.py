@@ -26,3 +26,5 @@ stats.print_stats()
 # next_move = game.flood_fill(game.my_id, confined_area="left")
 # print("The difference of time is :",
 #               timeit.default_timer() - start)
+gs_VFPmpCfmGxkY67B4bT3frPfD
+gs_yQyPjJF83t7KJfpkf374dYCF

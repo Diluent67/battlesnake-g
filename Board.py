@@ -47,12 +47,12 @@ class Board:
         self.graph = nx.grid_2d_graph(self.width, self.height)
 
         # TODO put these as class variables?
-        self.obstacles = [10] + [num for num in range(1, 9)] + [255]
+        self.obstacles = [10] + np.arange(11, 99, 11).tolist() + [255]
         self.board_translation = {
             0: " ",  # Empty space
-            1: "1", 2: "2", 3: "3", 4: "4", 5: "5", 6: "6", 7: "7", 8: "8",  # Up to 8 snakes
+            1: "£",  # Starting point for flood fill
             10: "H",  # Snake head
-            50: "£",  # Starting point for flood fill
+            11: "1", 22: "2", 33: "3", 44: "4", 55: "5", 66: "6", 77: "7", 88: "8",  # Up to 8 snakes
             100: "f",  # Food
             255: "x",  # Hazards or off-limit squares
             "O": "O"  # For visualising nodes with "display_graph"
@@ -98,7 +98,7 @@ class Board:
                 if skip_tail and pos_num == len(snake.body) - 1:
                     continue
 
-                self.board[pos.x, pos.y] = 10 if pos_num == 0 else snake_num + 1
+                self.board[pos.x, pos.y] = 10 if pos_num == 0 else 11 * (snake_num + 1)
                 # Keep any nodes that coincide with the position of our snake's head for future pathfinding
                 if not (snake_num == 0 and pos_num == 0):
                     self.graph.remove_nodes_from([pos.as_tuple()])
@@ -510,12 +510,17 @@ class Board:
             self,
             snake_id: str,
             risk_averse: Optional[bool] = True,
+            ff_split: Optional[bool] = False,
             full_package: Optional[bool] = False,
     ):
         board = copy.deepcopy(self.board).astype(np.uint8)
         snake = self.all_snakes[snake_id]
         head = snake.head
-        board[head.x, head.y] = 0
+
+
+
+        for f in self.food:
+            board[f.x, f.y] = 0
 
         # Cases where our tail is directly adjacent to our head and therefore in the way of our flood fill TODO: opponent tail as well?
         if head.manhattan_dist(snake.tail) == 1:
@@ -533,19 +538,41 @@ class Board:
                         risky_squares.append(risky_pos)
 
         mask = np.zeros(np.array(board.shape) + 2, dtype=np.uint8)
-        start_pt = head.as_tuple()
-        retval, _, _, _ = cv2.floodFill(board, mask, start_pt[::-1], 50, flags=4 | cv2.FLOODFILL_MASK_ONLY)
-        mask = 1 - mask[1:-1, 1:-1]  # 1s represent the barriers to the flood fill
-        contours, _ = cv2.findContours(mask, cv2.RETR_LIST, cv2.CHAIN_APPROX_NONE)
+        if not ff_split:
+            board[head.x, head.y] = 0
+        if ff_split:
+            if snake.facing_direction() in ["left", "right"]:
+                start_pt_left = head.moved_to("up").as_tuple()
+                start_pt_right = head.moved_to("down").as_tuple()
+            else:
+                start_pt_left = head.moved_to("left").as_tuple()
+                start_pt_right = head.moved_to("right").as_tuple()
+
+            retval_left, image2, mask, _ = cv2.floodFill(board, mask, start_pt_left[::-1], 1, flags=4 | cv2.FLOODFILL_MASK_ONLY)
+
+            mask = np.zeros(np.array(board.shape) + 2, dtype=np.uint8)
+            retval_right, image2, mask, _ = cv2.floodFill(board, mask, start_pt_right[::-1], 1, flags=4 | cv2.FLOODFILL_MASK_ONLY)
+
+            retval = retval_left if retval_left > retval_right else retval_right
+            start_pt = start_pt_left if retval_left > retval_right else start_pt_right
+            mask = 1 - mask[1:-1, 1:-1]  # 1s represent the barriers to the flood fill
+            contours, _ = cv2.findContours(mask, cv2.RETR_LIST, cv2.CHAIN_APPROX_NONE)
+        else:
+            start_pt = head.as_tuple()
+            retval, image2, mask, _ = cv2.floodFill(board, mask, start_pt[::-1], 1, flags=4)
+            mask = 1 - mask[1:-1, 1:-1]  # 1s represent the barriers to the flood fill
+            contours, _ = cv2.findContours(mask, cv2.RETR_LIST, cv2.CHAIN_APPROX_NONE)
 
         if full_package:
+            retval_ra = retval
             # Repeat but assume all risky squares are fair game
             for risky_sq in risky_squares:
                 board[risky_sq.x, risky_sq.y] = 0
 
             mask = np.zeros(np.array(board.shape) + 2, dtype=np.uint8)
-            retval_ra, _, _, _ = cv2.floodFill(board, mask, start_pt[::-1], 50, flags=4 | cv2.FLOODFILL_MASK_ONLY)
-            return retval, retval_ra
+            retval_all, _, _, _ = cv2.floodFill(board, mask, start_pt[::-1], 1, 1, 1, flags=4 | cv2.FLOODFILL_FIXED_RANGE)
+
+            return max(retval_ra - 1, 1e-15), max(retval_all - 1, 1e-15)
 
         return retval
 
@@ -587,7 +614,7 @@ class Board:
         board = copy.deepcopy(self.board)
         snake = self.all_snakes[snake_id]
         head = snake.head
-        board[head.x, head.y] = 50  # Representing our flood fill
+        board[head.x, head.y] = 1  # Representing our flood fill
 
         # See how flood fill changes when all snakes fast-forward X turns
         if fast_forward > 0:
@@ -647,10 +674,10 @@ class Board:
             if board[x][y] in (self.obstacles if avoid_risk else self.obstacles[:-1]):  # Off-limit squares
                 boundaries.append(Pos({"x": x, "y": y}))
                 return
-            if board[x][y] == 50 and not initial_square:  # Already filled
+            if board[x][y] == 1 and not initial_square:  # Already filled
                 return
 
-            board[x][y] = 50
+            board[x][y] = 1
             avoid_sq = [(x - 1, y), (x + 1, y), (x, y - 1), (x, y + 1)]
             for n in avoid_sq:
                 # if 0 <= n[0] < board_width and 0 <= n[1] < board_height:
@@ -670,34 +697,41 @@ class Board:
         #     min_x, max_x = max(0, head.x - crop), min(self.width, head.x + crop)
         #     min_y, max_y = max(0, head.y - crop), min(self.height, head.y + crop)
         if ff_split:
-            fill(head.moved_to("left").x, head.moved_to("left").y, board, initial_square=False, avoid_risk=risk_averse)
-            left_filled = sum((row == 50).sum() for row in board)
-            fill(head.moved_to("right").x, head.moved_to("right").y, board, initial_square=False, avoid_risk=risk_averse)
-            right_filled = sum((row == 50).sum() for row in board) - left_filled + 1
+            if snake.facing_direction() in ["left", "right"]:
+                left_x, left_y = head.moved_to("up").as_tuple()
+                right_x, right_y = head.moved_to("down").as_tuple()
+            else:
+                left_x, left_y = head.moved_to("left").as_tuple()
+                right_x, right_y = head.moved_to("right").as_tuple()
+            fill(left_x, left_y, board, initial_square=False, avoid_risk=risk_averse)
+            left_filled = sum((row == 1).sum() for row in board)
+            fill(right_x, right_y, board, initial_square=False, avoid_risk=risk_averse)
+            right_filled = sum((row == 1).sum() for row in board) - left_filled + 1
             flood_fill_ra = max(left_filled - 1, 1e-15) if left_filled > right_filled else max(right_filled - 1, 1e-15)
+            undesired = min([left_filled, right_filled])
         else:
             fill(head.x, head.y, board, initial_square=True, avoid_risk=risk_averse)
-            filled = sum((row == 50).sum() for row in board)
+            filled = sum((row == 1).sum() for row in board)
             flood_fill_ra = max(filled - 1, 1e-15)  # Exclude the head from the count, but cannot ever be negative
 
         if full_package:
             # Repeat but assume all risky squares are fair game
             for risky_sq in risky_squares:
                 # Situations where our snake's head was previously overwritten by a risky square
-                if risky_sq == head and board[risky_sq.x][risky_sq.y] != 50:
-                    board[risky_sq.x][risky_sq.y] = 50
+                if risky_sq == head and board[risky_sq.x][risky_sq.y] != 1:
+                    board[risky_sq.x][risky_sq.y] = 1
                     fill(risky_sq.x, risky_sq.y, board, initial_square=True, avoid_risk=False)
                 # Ensure that the skipped square can be connected to the main flood fill
                 surr_risks = risky_sq.adjacent_pos(len(board), len(board[0]))
                 for surr_risk in surr_risks:
-                    if board[surr_risk.x][surr_risk.y] == 50:
+                    if board[surr_risk.x][surr_risk.y] == 1:
                         # Remove from the list of boundary squares and update the fill
                         if risky_sq in boundaries:
                             boundaries = [pos for pos in boundaries if pos != risky_sq]
                         fill(risky_sq.x, risky_sq.y, board, initial_square=True, avoid_risk=False)
                         break
-            filled = sum((row == 50).sum() for row in board)
-            flood_fill_all = max(filled - 1, 1e-15)
+            filled = sum((row == 1).sum() for row in board)
+            flood_fill_all = max(filled - 1, 1e-15) if ff_split else max(filled - 1, 1e-15)
 
         if get_boundaries:
             return flood_fill_ra, boundaries

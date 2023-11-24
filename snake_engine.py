@@ -339,7 +339,7 @@ class Battlesnake:
                         strip = board[getattr(snake.head, ax_dir):, esc_move] if scan_dir == +1 \
                             else board[:(getattr(snake.head, ax_dir) + 1), esc_move][::-1]
                     # Check if we're trapped by our own body
-                    if strip[0] == 1 and snake_id == self.you.id:
+                    if strip[0] == 11 and snake_id == self.you.id:
                         # First check if our body's blocking our path ahead
                         if ax == "x":
                             our_strip = board[getattr(snake.head, ax), getattr(snake.head, ax_dir):] if scan_dir == +1 \
@@ -347,8 +347,8 @@ class Battlesnake:
                         else:
                             our_strip = board[getattr(snake.head, ax_dir):, getattr(snake.head, ax)] if scan_dir == +1 \
                                 else board[:(getattr(snake.head, ax_dir) + 1), getattr(snake.head, ax)][::-1]
-                        if 1 in our_strip:
-                            self_collision_dist = our_strip.tolist().index(1)
+                        if 11 in our_strip:
+                            self_collision_dist = our_strip.tolist().index(11)
                             self_collision_pos = self.you.head.moved_to(direction, distance=self_collision_dist)
                             # If our tail doesn't get out of our way in time, we're doomed
                             if len(self.you.body) - self.you.body.index(self_collision_pos) > self_collision_dist:
@@ -472,6 +472,9 @@ class Battlesnake:
         # How much space do we have?
         # self.board.whiteout(crop_centre=self.you.head)
         space_ra, space_all, ff_bounds, touch_opps = self.board.flood_fill(self.you.id, full_package=True, ff_split=ff_split)
+        space_ra_fast, space_all_fast = self.board.fast_flood_fill(self.you.id, full_package=True, ff_split=ff_split)
+        # assert abs(space_ra - space_ra_fast) <= 1, f"{space_ra} != {space_ra_fast}"
+        # assert abs(space_all - space_all_fast) <= 1, f"{space_all} != {space_all_fast}"
         space_ra_weight = 1
 
         # How cl
