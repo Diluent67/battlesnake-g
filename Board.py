@@ -511,6 +511,8 @@ class Board:
             snake_id: str,
             risk_averse: Optional[bool] = True,
             ff_split: Optional[bool] = False,
+            confine_to: Optional[str] = None,
+            confined_dist: Optional[int] = 3,
             opp_cutoff: Optional[str] = None,
             full_package: Optional[bool] = False,
     ):
@@ -545,6 +547,23 @@ class Board:
             while not self.evaluate_pos(opp_new_head, opp_cutoff, turn_type="static")[1]:
                 board[opp_new_head.x, opp_new_head.y] = 255
                 opp_new_head = opp_new_head.moved_to(opp_dir, 1)
+
+            # Narrow down a portion of the board that represents the snake's peripheral vision
+        if confine_to is not None:
+            xs, ys, new_head = snake.peripheral_vision(
+                confine_to, dist=confined_dist, width=self.width, height=self.height)
+            board = board[xs[0]:xs[1], ys[0]:ys[1]]
+            # Account for the board change if we're running the full package
+            if full_package:
+                shifted_risky_squares = []
+                for risky_pos in risky_squares:
+                    if risky_pos.within_bounds([xs, ys]):
+                        shift_x, shift_y = new_head.x - head.x, new_head.y - head.y
+                        new_risky_pos = Pos({"x": risky_pos.x + shift_x, "y": risky_pos.y + shift_y})
+                        shifted_risky_squares.append(new_risky_pos)
+                risky_squares = shifted_risky_squares
+            # Update our snake's head pointer to adjust to the cropped board
+            head = new_head
 
         mask = np.zeros(np.array(board.shape) + 2, dtype=np.uint8)
         if not ff_split:
@@ -590,7 +609,7 @@ class Board:
 
             return max(retval_ra - 1, 1e-15), max(retval_all - 1, 1e-15), edge_coordinates_set
 
-        return retval
+        return max(retval - 1, 1e-15)
 
     def flood_fill(
             self,

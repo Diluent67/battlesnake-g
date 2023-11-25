@@ -115,7 +115,7 @@ class Battlesnake:
                 head2 = self.all_snakes[sort_by_dist_to].head
                 moveset = sorted(moveset, key=lambda m: self.board.shortest_dist(head2, head.moved_to(m)))
             if sort_by_periph:
-                moveset = sorted(moveset, key=lambda m: self.board.flood_fill(snake_id, confine_to=m), reverse=True)
+                moveset = sorted(moveset, key=lambda m: self.board.fast_flood_fill(snake_id, confine_to=m), reverse=True)
 
         # Generate a risk-averse moveset
         moveset_ra = moveset.copy()
@@ -454,7 +454,7 @@ class Battlesnake:
 
         opp_periphs = {}
         for opp_id in self.opponents.keys():
-            opp_periphs[opp_id] = self.board.flood_fill(opp_id, risk_averse=False, confine_to="auto")
+            opp_periphs[opp_id] = self.board.fast_flood_fill(opp_id, risk_averse=False, confine_to="auto")
 
         # Did any opponent snakes die or increase in length? (Higher opponent total => worse for us)
         leftover_opps = [opp for opp in self.opponents.values() if opp_periphs[opp.id] >= 3]
@@ -472,10 +472,6 @@ class Battlesnake:
         next_moves = self.get_moveset(snake_id=self.you.id, risk_averse=True)
         ff_split =  set(next_moves) == {"left", "right"}
         # How much space do we have?
-        # self.board.whiteout(crop_centre=self.you.head)
-        # clock_in = time.time_ns()
-        # space_ra, space_all, ff_bounds, touch_opps = self.board.flood_fill(self.you.id, full_package=True, ff_split=ff_split)
-        # clock_out_reg = round((time.time_ns() - clock_in) / 1000000, 3)
         clock_in = time.time_ns()
         space_ra, space_all, ff_bounds = self.board.fast_flood_fill(self.you.id, full_package=True, ff_split=ff_split)
         clock_out_ff = round((time.time_ns() - clock_in) / 1000000, 3)
@@ -515,7 +511,7 @@ class Battlesnake:
             food_weight = 50
 
         # How much space do we have in our peripheral?
-        periph_ra, periph_all, periph_bounds, _ = self.board.flood_fill(self.you.id, confine_to="auto", full_package=True)
+        periph_ra, periph_all, _ = self.board.fast_flood_fill(self.you.id, confine_to="auto", full_package=True)
         periph_all_weight = 2
 
         # Size of our peripheral
@@ -590,8 +586,10 @@ class Battlesnake:
             else:
                 confine_to = "auto"
 
-            available_enemy_space_ra, available_enemy_space_all, _, _ = self.board.flood_fill(closest_enemy, full_package=True)
-            available_enemy_space = self.board.flood_fill(closest_enemy, risk_averse=True, confine_to=confine_to)
+            available_enemy_space_ra, available_enemy_space_all, _ = self.board.fast_flood_fill(closest_enemy, full_package=True)
+            # assert available_enemy_space_ra == available_enemy_space_ra2, f"{available_enemy_space_ra}, {available_enemy_space_ra2}"
+
+            available_enemy_space = self.board.fast_flood_fill(closest_enemy, risk_averse=True, confine_to=confine_to)
 
             aggression_okay = self.you.length >= 6 and space_ra >= 5 or (self.you.length < 6 and
                                                       ( self.all_snakes[closest_enemy].head.x in [0, 1, self.board.width - 2, self.board.width - 1] and
@@ -699,7 +697,7 @@ class Battlesnake:
                 not closest_opp.head.within_bounds(
                     self.you.peripheral_vision(direction=self.you.facing_direction(), return_pos_only=True)) and
                 (on_edge or (not on_edge and self.you.facing_direction() in me))):  # continue to cutoff, unless we're on the edge for an edge kill?
-            cutting_off = self.board.flood_fill(closest_opp.id, opp_cutoff=self.you.id)
+            cutting_off = self.board.fast_flood_fill(closest_opp.id, opp_cutoff=self.you.id)
             if cutting_off <= 15:
                 cutoff_bonus = 2500
             elif cutting_off <= self.board.width * self.board.height / 6:
@@ -719,18 +717,18 @@ class Battlesnake:
             # if cutting_off is not None:
             #     us_cutoff = cutting_off
             # else:
-            #     us_cutoff = self.board.flood_fill(closest_opp.id, opp_cutoff=self.you.id)
-            # opp_cutoff = self.board.flood_fill(self.you.id, opp_cutoff=closest_opp.id)
+            #     us_cutoff = self.board2.flood_fill(closest_opp.id, opp_cutoff=self.you.id)
+            # opp_cutoff = self.board2.flood_fill(self.you.id, opp_cutoff=closest_opp.id)
 
             if len(self.opponents) == 1:
                 if cutting_off is not None:
                     us_cutoff = cutting_off
                 else:
-                    us_cutoff = self.board.flood_fill(closest_opp.id, opp_cutoff=self.you.id)
-                opp_cutoff = self.board.flood_fill(self.you.id, opp_cutoff=closest_opp.id)
+                    us_cutoff = self.board.fast_flood_fill(closest_opp.id, opp_cutoff=self.you.id)
+                opp_cutoff = self.board.fast_flood_fill(self.you.id, opp_cutoff=closest_opp.id)
             else:
-                us_cutoff = self.board.flood_fill(opps_nearby[0].id, opp_cutoff=self.you.id)
-                opp_cutoff = self.board.flood_fill(self.you.id, opp_cutoff=opps_nearby[0].id)
+                us_cutoff = self.board.fast_flood_fill(opps_nearby[0].id, opp_cutoff=self.you.id)
+                opp_cutoff = self.board.fast_flood_fill(self.you.id, opp_cutoff=opps_nearby[0].id)
             if self.you.length < closest_opp.length:
                 if opp_cutoff < 15:
                     if space_penalty == 0:
@@ -943,7 +941,7 @@ class Battlesnake:
                         continue
                     moved_head = opp_snake.head.moved_to(move)
                     dist_from_us = self.board.shortest_dist(self.you.head, moved_head)
-                    opp_space = self.board.flood_fill(opp_id, risk_averse=False, confine_to=move)
+                    opp_space = self.board.fast_flood_fill(opp_id, risk_averse=False, confine_to=move)
                     opp_dist_to_food = min([1e6] + [moved_head.manhattan_dist(food) for food in self.board.food])
                     our_dist_to_food, _ = self.board.closest_food(self.you.id, risk_averse=False)
                     opp_aggression = (opp_snake.length > self.you.length and
