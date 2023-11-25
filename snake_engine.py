@@ -257,7 +257,7 @@ class Battlesnake:
             # If there are multiple openings, select the one closest to our snake
             openings_in_boundary = sorted(openings_in_boundary, key=lambda op: self.you.head.manhattan_dist(op))
             opening = openings_in_boundary[0]
-            cutoff_path_dist = self.you.head.manhattan_dist(opening) * 2
+            cutoff_path_dist = max(moves_until_opening, self.you.head.manhattan_dist(opening) * 2)
             longest_path_to_opening, shortest_path_to_opening = self.board.longest_paths_to_stall(
                 self.you.head, opening, min_length=moves_until_opening, simple_paths_cutoff=cutoff_path_dist)
 
@@ -628,7 +628,7 @@ class Battlesnake:
             food_weight = 200
         elif self.you.length > max(opp_lengths):  # If we are the longest snake
             longest_flag = True
-            if self.you.length > max(opp_lengths) + 10:
+            if self.you.length > max(opp_lengths) + 5:
                 food_weight = 1
                 incr_length_weight = 1
             elif dist_food < min(dist_from_enemies):  # Might as well get food if convenient
@@ -750,7 +750,7 @@ class Battlesnake:
         # Get closer to enemy snakes if we're longer
         if 2 >= len(self.opponents) == sum([self.you.length >= s.length + 1 for s in self.opponents.values()]):
             dist_from_enemies = sorted(
-                [self.board.shortest_dist(self.you.head, opp.head) for opp in self.opponents.values()])
+                [self.board.shortest_dist(self.you.head, opp.head, efficient=False) for opp in self.opponents.values()])
             dist_to_enemy = dist_from_enemies[0]
         else:
             dist_to_enemy = 0
@@ -797,6 +797,8 @@ class Battlesnake:
                     collision_inbound = True
         if collision_inbound:
             danger_penalty = -15 * diff_lengths - 15/self.you.head.manhattan_dist(closest_opp.head)
+            food_weight = 1
+            incr_length_weight = 1
         else:
             danger_penalty = 0
 
@@ -807,6 +809,7 @@ class Battlesnake:
             # Good to be aggressive, but only if it's worth it
             if our_dist <= 5:
                 food_weight /= 10
+                incr_length_weight /= 10
 
 
 
@@ -843,7 +846,7 @@ class Battlesnake:
 
         # Can we get cut off?
         opps_nearby = [opp for opp in self.opponents.values() if self.you.head.manhattan_dist(opp.head) <= 4]
-        if 0 < len(opps_nearby) <= 2 or len(self.opponents) == 1:
+        if 0 < len(opps_nearby) <= 3 or len(self.opponents) == 1:
             # if cutting_off is not None:
             #     us_cutoff = cutting_off
             # else:
