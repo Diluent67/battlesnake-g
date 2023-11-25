@@ -199,7 +199,7 @@ class Battlesnake:
         new_game.board.update_board()
         return new_game
 
-    def trap_detection(self) -> tuple[bool, float | None]:
+    def trap_detection(self, space_all, ff_bounds) -> tuple[bool, float | None]:
         """
         Determine if our snake is trapped based on its possible escape routes
 
@@ -210,22 +210,24 @@ class Battlesnake:
         trapped = False
         esc_penalty = None
 
+        opp_heads = [opp.head.as_tuple() for opp in self.opponents.values()]
+        touch_opps = [Pos({"x": ff_bound[0], "y": ff_bound[1]}) for ff_bound in ff_bounds if ff_bound in opp_heads]
+        self.board.touch_opps = touch_opps
         # Check if we're trapped along with another snake
         collision_sq = None
-        if len(self.board.touch_opps) > 0:
+        if len(touch_opps) > 0:
             dist_to_trapped_opp, path_to_trapped_opp = self.board.dijkstra_shortest_path(
-                self.you.head, self.board.touch_opps[0], snake_id=self.you.id, return_full_path=True)
-            trapped_opp = self.board.identify_snake(self.board.touch_opps[0])
+                self.you.head, touch_opps[0], snake_id=self.you.id, return_full_path=True)
+            trapped_opp = self.board.identify_snake(touch_opps[0])
             trapped_opp_moveset = self.get_moveset(trapped_opp.id, risk_averse=True)
             trapped_with_us = True
             for move in trapped_opp_moveset:
-                min_x, max_x = min([pos.x for pos in self.board.ff_bounds]), max([pos.x for pos in self.board.ff_bounds])
-                min_y, max_y = min([pos.y for pos in self.board.ff_bounds]), max(
-                    [pos.y for pos in self.board.ff_bounds])
+                min_x, max_x = min([pos[0] for pos in ff_bounds]), max([pos[0] for pos in ff_bounds])
+                min_y, max_y = min([pos[1] for pos in ff_bounds]), max([pos[1] for pos in ff_bounds])
                 moved = trapped_opp.head.moved_to(move)
                 if not (min_x <= moved.x <= max_x and min_y <= moved.y <= max_y):
                     trapped_with_us = False
-                    self.board.touch_opps.remove(trapped_opp.head)
+                    touch_opps.remove(trapped_opp.head)
                     break
             # We'll win the incoming collision if we're longer and colliding on the same square
             if trapped_with_us and dist_to_trapped_opp % 2 == 1 and self.you.length > trapped_opp.length:
@@ -237,12 +239,12 @@ class Battlesnake:
         openings_in_boundary = []
         found_opening = False
         moves_until_opening = None
-        for move_num in range(1, round(self.board.space_all) + 2):
+        for move_num in range(1, round(space_all) + 2):
             # Simulate each snake's new position if its tail were moved forward by 1
             for snake in self.all_snakes.values():
                 new_tail = snake.body[max(-snake.length + 1, -move_num)]
                 # Until we detect a hole in our flood fill boundary
-                if new_tail in self.board.ff_bounds:
+                if new_tail.as_tuple() in ff_bounds:
                     found_opening = True
                     openings_in_boundary.append(new_tail)
             # We found an opening! Keep track of how many moves it took to appear
@@ -471,8 +473,14 @@ class Battlesnake:
         ff_split =  set(next_moves) == {"left", "right"}
         # How much space do we have?
         # self.board.whiteout(crop_centre=self.you.head)
-        space_ra, space_all, ff_bounds, touch_opps = self.board.flood_fill(self.you.id, full_package=True, ff_split=ff_split)
-        space_ra_fast, space_all_fast = self.board.fast_flood_fill(self.you.id, full_package=True, ff_split=ff_split)
+        # clock_in = time.time_ns()
+        # space_ra, space_all, ff_bounds, touch_opps = self.board.flood_fill(self.you.id, full_package=True, ff_split=ff_split)
+        # clock_out_reg = round((time.time_ns() - clock_in) / 1000000, 3)
+        clock_in = time.time_ns()
+        space_ra, space_all, ff_bounds = self.board.fast_flood_fill(self.you.id, full_package=True, ff_split=ff_split)
+        clock_out_ff = round((time.time_ns() - clock_in) / 1000000, 3)
+        # print(clock_out_reg - clock_out_ff)
+        # assert clock_out_reg-clock_out_ff > 0, f"{clock_out_reg} - {clock_out_ff}"
         # assert abs(space_ra - space_ra_fast) <= 1, f"{space_ra} != {space_ra_fast}"
         # assert abs(space_all - space_all_fast) <= 1, f"{space_all} != {space_all_fast}"
         space_ra_weight = 1
@@ -530,7 +538,7 @@ class Battlesnake:
 
         # Are we trapped? (With no incoming opponents trapped with us)
         if space_all <= 15:
-            self.trapped, esc_penalty = self.trap_detection()
+            self.trapped, esc_penalty = self.trap_detection(space_all, ff_bounds)
             # Penalise entrapment (-1e7) more than getting killed by an opponent (-1e6)
             space_penalty = -1e7 if self.trapped and len(self.board.touch_opps) == 0 else space_penalty
             space_penalty += esc_penalty if not self.trapped and esc_penalty is not None else 0

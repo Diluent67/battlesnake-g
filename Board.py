@@ -511,14 +511,14 @@ class Board:
             snake_id: str,
             risk_averse: Optional[bool] = True,
             ff_split: Optional[bool] = False,
+            opp_cutoff: Optional[str] = None,
             full_package: Optional[bool] = False,
     ):
         board = copy.deepcopy(self.board).astype(np.uint8)
         snake = self.all_snakes[snake_id]
         head = snake.head
 
-
-
+        # Remove food from the board since it'll block our flood fill
         for f in self.food:
             board[f.x, f.y] = 0
 
@@ -537,6 +537,15 @@ class Board:
                         board[risky_pos.x, risky_pos.y] = 255
                         risky_squares.append(risky_pos)
 
+        # See what happens if an opponent were to keep moving forward and "cut off" our space
+        if opp_cutoff:
+            opp_snake = self.all_snakes[opp_cutoff]
+            opp_dir = opp_snake.facing_direction()
+            opp_new_head = opp_snake.head.moved_to(opp_dir, 1)
+            while not self.evaluate_pos(opp_new_head, opp_cutoff, turn_type="static")[1]:
+                board[opp_new_head.x, opp_new_head.y] = 255
+                opp_new_head = opp_new_head.moved_to(opp_dir, 1)
+
         mask = np.zeros(np.array(board.shape) + 2, dtype=np.uint8)
         if not ff_split:
             board[head.x, head.y] = 0
@@ -548,20 +557,27 @@ class Board:
                 start_pt_left = head.moved_to("left").as_tuple()
                 start_pt_right = head.moved_to("right").as_tuple()
 
-            retval_left, image2, mask, _ = cv2.floodFill(board, mask, start_pt_left[::-1], 1, flags=4 | cv2.FLOODFILL_MASK_ONLY)
-
+            retval_left, _, mask, _ = cv2.floodFill(board, mask, start_pt_left[::-1], 1, flags=4 | cv2.FLOODFILL_MASK_ONLY)
             mask = np.zeros(np.array(board.shape) + 2, dtype=np.uint8)
-            retval_right, image2, mask, _ = cv2.floodFill(board, mask, start_pt_right[::-1], 1, flags=4 | cv2.FLOODFILL_MASK_ONLY)
+            retval_right, _, mask, _ = cv2.floodFill(board, mask, start_pt_right[::-1], 1, flags=4 | cv2.FLOODFILL_MASK_ONLY)
 
             retval = retval_left if retval_left > retval_right else retval_right
             start_pt = start_pt_left if retval_left > retval_right else start_pt_right
-            mask = 1 - mask[1:-1, 1:-1]  # 1s represent the barriers to the flood fill
-            contours, _ = cv2.findContours(mask, cv2.RETR_LIST, cv2.CHAIN_APPROX_NONE)
+            mask = mask[1:-1, 1:-1]  # 1s represent the barriers to the flood fill
         else:
             start_pt = head.as_tuple()
             retval, image2, mask, _ = cv2.floodFill(board, mask, start_pt[::-1], 1, flags=4)
-            mask = 1 - mask[1:-1, 1:-1]  # 1s represent the barriers to the flood fill
-            contours, _ = cv2.findContours(mask, cv2.RETR_LIST, cv2.CHAIN_APPROX_NONE)
+            mask = mask[1:-1, 1:-1]  # 1s represent the barriers to the flood fill
+
+        # Create a structuring element for dilation that only considers up/left/right/down neighbors
+        kernel = np.array([[0, 1, 0],
+                           [1, 1, 1],
+                           [0, 1, 0]], np.uint8)
+        dilated_array = cv2.dilate(mask, kernel, iterations=1)
+        # Find the edges by subtracting the original array from the dilated one
+        edge_array = dilated_array - mask
+        edge_coordinates = np.column_stack(np.where(edge_array == 1))
+        edge_coordinates_set = {tuple(edge) for edge in edge_coordinates}
 
         if full_package:
             retval_ra = retval
@@ -572,7 +588,7 @@ class Board:
             mask = np.zeros(np.array(board.shape) + 2, dtype=np.uint8)
             retval_all, _, _, _ = cv2.floodFill(board, mask, start_pt[::-1], 1, 1, 1, flags=4 | cv2.FLOODFILL_FIXED_RANGE)
 
-            return max(retval_ra - 1, 1e-15), max(retval_all - 1, 1e-15)
+            return max(retval_ra - 1, 1e-15), max(retval_all - 1, 1e-15), edge_coordinates_set
 
         return retval
 
