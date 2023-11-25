@@ -72,16 +72,16 @@ print(a)
 
 
 
-# for i in range(5):
-#     board.board[i][i+2] = "1"
-board = Board(game_state)
-board.update_board()
-board2 = board.board
-clock_in = time.time_ns()
-space_ra, space_all, ff_bounds, touch_opps = board.flood_fill(you_id, full_package=True, ff_split=ff_split)
-# print(sorted([f.as_tuple() for f in ff_bounds], key=lambda x: x[0])) , [f.as_tuple() for f in ff_bounds], touch_opps
-print(f"Done original in {round((time.time_ns() - clock_in) / 1000000, 3)} ms")
-print(space_ra, space_all, sorted([a.as_tuple() for a in ff_bounds]))
+# # for i in range(5):
+# #     board.board[i][i+2] = "1"
+# board = Board(game_state)
+# board.update_board()
+# board2 = board.board
+# clock_in = time.time_ns()
+# space_ra, space_all, ff_bounds, touch_opps = board.flood_fill(you_id, full_package=True, ff_split=ff_split)
+# # print(sorted([f.as_tuple() for f in ff_bounds], key=lambda x: x[0])) , [f.as_tuple() for f in ff_bounds], touch_opps
+# print(f"Done original in {round((time.time_ns() - clock_in) / 1000000, 3)} ms")
+# print(space_ra, space_all, sorted([a.as_tuple() for a in ff_bounds]))
 
 
 

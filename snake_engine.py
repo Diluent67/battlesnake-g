@@ -292,8 +292,9 @@ class Battlesnake:
         # Establish who the snake is and who the possible killers are
         snake = self.all_snakes[snake_id]
         opponents = [opp for opp in self.all_snakes.values() if snake.id != opp.id]
-        possible_moves = self.get_moveset(snake.id, risk_averse=True, turn="static")
         direction = snake.facing_direction()
+        possible_moves = self.get_moveset(snake.id, risk_averse=True, turn="static")
+
 
         # A small database that covers different edge kill scenarios
         dir_dict = {
@@ -326,7 +327,7 @@ class Battlesnake:
         edge_killers = [None, None]
         trapped_by_ourselves = False
         trapped_by_edge = False
-        if len(set(escape_dirs).intersection(possible_moves)) == 0:
+        if len(set(escape_dirs).intersection(possible_moves)) == 0 or direction not in possible_moves:
             # Scan the column/row to each side of us in ascending order
             for num, escape_dir in enumerate(escape_dirs):
                 look = -1 if num == 0 else +1
@@ -393,7 +394,7 @@ class Battlesnake:
                             trapped_sides[num] = True
                             continue
 
-                    # Check the space directly behind and to the side of us for any possible edge-killers
+                    # Check the space directly behind us and the space to the side of us for any possible edge-killers
                     if ax == "x":
                         threat_behind = Pos({"x": esc_move, "y": getattr(snake.head, ax_dir) - 1}) if scan_dir == +1 \
                             else Pos({"x": esc_move, "y": getattr(snake.head, ax_dir) + 1})
@@ -424,6 +425,48 @@ class Battlesnake:
                     if len(opp_killers) > 0:
                         trapped_sides[num] = True
                         edge_killers[num] = sorted(opp_killers, key=lambda op: op.length, reverse=True)[0]
+                        continue
+
+                    # Situations where we're forced to pick a side and are restrained to a "tunnel"
+                    if direction not in possible_moves:
+                        if ax == "x":
+                            strip1, strip2 = None, None
+                            if getattr(snake.head, ax_dir) + 1 < self.board.height:
+                                strip1 = board[esc_move:, getattr(snake.head, ax_dir) + 1] if scan_dir == +1 \
+                                    else board[:(esc_move + 1), getattr(snake.head, ax_dir) + 1][::-1]
+                            if getattr(snake.head, ax_dir) - 1 >= 0:
+                                strip2 = board[esc_move:, getattr(snake.head, ax_dir) - 1] if scan_dir == +1 \
+                                    else board[:(esc_move + 1), getattr(snake.head, ax_dir) - 1][::-1]
+
+                            danger_flag = [False, False]
+                            for strip_num, strip in enumerate([strip1, strip2]):
+                                if strip is None:
+                                    danger_flag[strip_num] = True
+                                    continue
+                                if strip[0] >= 10 and strip[0] != 100:
+                                    if 0 not in strip:
+                                        danger_flag[strip_num] = True
+                                        continue
+                                    freedom = strip.tolist().index(0)
+                                    if strip_num == 0:
+                                        edge_killer = Pos({"x": getattr(snake.head, ax) + freedom + 1,
+                                                           "y": getattr(snake.head, ax_dir) + 1}) if scan_dir == +1 \
+                                            else Pos({"x": getattr(snake.head, ax) - freedom - 1,
+                                                      "y": getattr(snake.head, ax_dir) + 1})
+                                        for opp_killer in self.opponents.values():
+                                            if opp_killer.head.manhattan_dist(edge_killer) <= freedom:
+                                                trapped_sides[num] = True
+                                                edge_killers[num] = opp_killer
+                                                continue
+
+
+
+                                # blocker = Pos({"x": getattr(snake.head, ax) + freedom + 1, "y": getattr(snake.head, ax_dir)}) if scan_dir == +1 \
+                                #     else Pos({"x": getattr(snake.head, ax) - freedom - 1, "y": getattr(snake.head, ax_dir)})
+
+
+                    #     else:  # TODO
+                    #         strip = board[getattr(snake.head, ax_dir), esc_move:] if scan_dir == +1 else board[getattr(snake.head, ax_dir) + 1, esc_move:][::-1]
                 else:
                     trapped_sides[num] = True
                     trapped_by_edge = True
@@ -470,10 +513,9 @@ class Battlesnake:
                 self.opponents.pop(dead_opp)
 
         next_moves = self.get_moveset(snake_id=self.you.id, risk_averse=True)
-        ff_split =  set(next_moves) == {"left", "right"}
         # How much space do we have?
         clock_in = time.time_ns()
-        space_ra, space_all, ff_bounds = self.board.fast_flood_fill(self.you.id, full_package=True, ff_split=ff_split)
+        space_ra, space_all, ff_bounds = self.board.fast_flood_fill(self.you.id, full_package=True)
         clock_out_ff = round((time.time_ns() - clock_in) / 1000000, 3)
         # print(clock_out_reg - clock_out_ff)
         # assert clock_out_reg-clock_out_ff > 0, f"{clock_out_reg} - {clock_out_ff}"
@@ -941,7 +983,10 @@ class Battlesnake:
                         continue
                     moved_head = opp_snake.head.moved_to(move)
                     dist_from_us = self.board.shortest_dist(self.you.head, moved_head)
-                    opp_space = self.board.fast_flood_fill(opp_id, risk_averse=False, confine_to=move)
+                    # if self.you.head.manhattan_dist(opp_snake.head) > focus_within:
+                    #     opp_space = 1e6
+                    # else:
+                    #     opp_space = 1e6
                     opp_dist_to_food = min([1e6] + [moved_head.manhattan_dist(food) for food in self.board.food])
                     our_dist_to_food, _ = self.board.closest_food(self.you.id, risk_averse=False)
                     opp_aggression = (opp_snake.length > self.you.length and
@@ -953,9 +998,11 @@ class Battlesnake:
                     aggressor = dist_from_us if not opp_aggression else dist_from_us
                     if dist_from_us >= 8 and moved_head.manhattan_dist(self.you.head) >= 7 and len(self.opponents) > 1:
                         aggressor *= 2
+                    if moved_head.is_diagonal(self.you.head):
+                        aggressor -= 0.5
                     opp_scores.append(
                         (opp_id,
-                         aggressor + opp_food + opp_penalty + ((10 / opp_space) if opp_space >= 1 else 0))
+                         aggressor + opp_food + opp_penalty)  # ((10 / opp_space) if opp_space >= 1 else 0)
                     )
                     # print(f"Dist: {dist_from_us}, Aggro: {aggressor}, Food: {opp_food}, Space: {round(((10 / opp_space) if opp_space >= 1 else 0), 2)}, Pen: {opp_penalty})")
                 # Sort the opponent moveset by the computed heuristics
@@ -982,7 +1029,9 @@ class Battlesnake:
 
             # Determine the maximum number of move combinations
             opps_nearby = [opp for opp in self.opponents.values() if self.you.head.manhattan_dist(opp.head) <= 5]
-            if len(opps_nearby) >= 3:
+            if len(self.opponents) >= 7:
+                num_sims = 2
+            elif len(opps_nearby) >= 3:
                 num_sims = 3
             else:
                 num_sims = 3
@@ -1004,11 +1053,10 @@ class Battlesnake:
                 if worst_opp_id not in worst_opp_tracker.keys():
                     worst_opp_tracker[worst_opp_id] = []
                 # Start the move combo with the most threatening move possible for any opponent
-                move_combo = {
-                    worst_opp_id: [move for move in opps_moves[worst_opp_id] if not (
-                            move in worst_opp_tracker[worst_opp_id] and len(opps_moves[worst_opp_id]) > 1)][0]
-                }
-                worst_opp_tracker[worst_opp_id].append(opps_moves[worst_opp_id][0])
+                worst_opp_move = [move for move in opps_moves[worst_opp_id] if not (
+                        move in worst_opp_tracker[worst_opp_id] and len(opps_moves[worst_opp_id]) > 1)][0]
+                move_combo = {worst_opp_id: worst_opp_move}
+                worst_opp_tracker[worst_opp_id].append(worst_opp_move)  # opps_moves[worst_opp_id][0]
                 # Fill in the rest of the moveset with the most threatening move for each opponent
                 for rest_opp_id in self.opponents.keys():
                     if rest_opp_id != worst_opp_id:

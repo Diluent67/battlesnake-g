@@ -265,3 +265,178 @@ def display_board(self, board: Optional[np.array] = None, return_string: Optiona
         snake_still_alive = snake_monitor[for_snake_id if for_snake_id is not None else self.you.id]
 
         return game_over, snake_still_alive
+
+
+
+    # def flood_fill(
+    #         self,
+    #         snake_id: str,
+    #         risk_averse: Optional[bool] = True,
+    #         confine_to: Optional[str] = None,
+    #         confined_dist: Optional[int] = 3,
+    #         fast_forward: Optional[int] = 0,
+    #         opp_cutoff: Optional[str] = None,
+    #         get_boundaries: Optional[bool] = False,
+    #         get_touching_opps: Optional[bool] = False,
+    #         full_package: Optional[bool] = False,
+    #         ff_split: Optional[bool] = False
+    # ) -> int | tuple[int, list[Pos]]:
+    #     """
+    #     Get the total available space for a given snake.
+    #
+    #     :param snake_id: The ID of the snake we want to do flood fill for
+    #     :param risk_averse: Option to avoid any squares that directly border a longer opponent's head
+    #     :param confine_to: Tells the function to do flood fill on only one side of the snake (either "left", "right",
+    #         "up", or "down") to represent its peripheral vision
+    #     :param confined_dist: Paired with "confine_to" to determine the depth of the snake's peripheral vision
+    #     :param fast_forward: Hypothetical scenarios where we want to see how much space we still have after moving
+    #         X turns ahead. E.g. if we set it to 5, then we remove 5 squares from all snake's tails before doing flood
+    #         fill - this is only useful when we suspect we'll be trapped by an opponent snake.
+    #     :param opp_cutoff: Input any opponent snake IDs and see how much space we still have after they "cut off" our
+    #         space. Assume the opponents keep going forward until they meet the edge of the board or an obstacle.
+    #     :param get_boundaries: Option to return a list of positions that represent the edges of our flood fill
+    #     :param get_touching_opps: Option to return a list of other snakes whose heads our flood fill is touching
+    #     :param full_package: Option to run 4 parameters at once with a single function call: risk_averse=True,
+    #         risk_averse=False, get_boundaries=True, and get_touching_opps=True
+    #
+    #     :return:
+    #         The total area of the flood fill selection
+    #         Optionally, a list of other snakes whose heads our flood fill is touching
+    #     """
+    #     board = copy.deepcopy(self.board)
+    #     snake = self.all_snakes[snake_id]
+    #     head = snake.head
+    #     board[head.x, head.y] = 1  # Representing our flood fill
+    #
+    #     # See how flood fill changes when all snakes fast-forward X turns
+    #     if fast_forward > 0:
+    #         for snake in self.all_snakes.values():
+    #             remove_tail = max(-snake.length + 1, -fast_forward)
+    #             for rm in snake.body[remove_tail:]:
+    #                 board[rm.x, rm.y] = 0
+    #
+    #     # Cases where our tail is directly adjacent to our head and therefore in the way of our flood fill TODO: opponent tail as well?
+    #     if head.manhattan_dist(snake.tail) == 1:
+    #         board[snake.tail.x, snake.tail.y] = 0
+    #
+    #     # Avoid any squares that could lead to a losing head-to-head collision
+    #     risky_squares = []
+    #     if risk_averse:
+    #         possible_threats = [opp.head for opp in self.all_snakes.values() if (
+    #                 opp.id != snake_id and opp.length >= snake.length)]
+    #         for threat in possible_threats:
+    #             for risky_pos in threat.adjacent_pos(self.width, self.height):
+    #                 if board[risky_pos.x, risky_pos.y] not in self.obstacles:
+    #                     board[risky_pos.x, risky_pos.y] = 255
+    #                     risky_squares.append(risky_pos)
+    #
+    #     # See what happens if an opponent were to keep moving forward and "cut off" our space
+    #     if opp_cutoff:
+    #         opp_snake = self.all_snakes[opp_cutoff]
+    #         opp_dir = opp_snake.facing_direction()
+    #         opp_new_head = opp_snake.head.moved_to(opp_dir, 1)
+    #         while not self.evaluate_pos(opp_new_head, opp_cutoff, turn_type="static")[1]:
+    #             board[opp_new_head.x, opp_new_head.y] = 255
+    #             opp_new_head = opp_new_head.moved_to(opp_dir, 1)
+    #
+    #     # Narrow down a portion of the board that represents the snake's peripheral vision
+    #     if confine_to is not None:
+    #         xs, ys, new_head = snake.peripheral_vision(
+    #             confine_to, dist=confined_dist, width=self.width, height=self.height)
+    #         board = board[xs[0]:xs[1], ys[0]:ys[1]]
+    #         # Account for the board change if we're running the full package
+    #         if full_package:
+    #             shifted_risky_squares = []
+    #             for risky_pos in risky_squares:
+    #                 if risky_pos.within_bounds([xs, ys]):
+    #                     shift_x, shift_y = new_head.x - head.x, new_head.y - head.y
+    #                     new_risky_pos = Pos({"x": risky_pos.x + shift_x, "y": risky_pos.y + shift_y})
+    #                     shifted_risky_squares.append(new_risky_pos)
+    #             risky_squares = shifted_risky_squares
+    #         # Update our snake's head pointer to adjust to the cropped board
+    #         head = new_head
+    #
+    #     def fill(x, y, board, initial_square, avoid_risk):
+    #         if board.shape[0] == 0 or board.shape[1] == 0:  # Empty board TODO: remove from recursive
+    #             return
+    #         if board[x][y] == self.obstacles[0]:  # Opponent snake heads
+    #             heads_in_contact.append(Pos({"x": x, "y": y}))
+    #             boundaries.append(Pos({"x": x, "y": y}))
+    #             return
+    #         if board[x][y] in (self.obstacles if avoid_risk else self.obstacles[:-1]):  # Off-limit squares
+    #             boundaries.append(Pos({"x": x, "y": y}))
+    #             return
+    #         if board[x][y] == 1 and not initial_square:  # Already filled
+    #             return
+    #
+    #         board[x][y] = 1
+    #         avoid_sq = [(x - 1, y), (x + 1, y), (x, y - 1), (x, y + 1)]
+    #         for n in avoid_sq:
+    #             # if 0 <= n[0] < board_width and 0 <= n[1] < board_height:
+    #             if min_x <= n[0] < max_x and min_y <= n[1] < max_y:
+    #                 fill(n[0], n[1], board, initial_square=False, avoid_risk=avoid_risk)
+    #
+    #     boundaries = []
+    #     heads_in_contact = []
+    #     # board_width, board_height = len(board), len(board[0])
+    #     crop = 6
+    #     min_x, max_x = 0, len(board)
+    #     min_y, max_y = 0, len(board[0])
+    #     # if confine_to is not None:
+    #     #     min_x, max_x = 0, len(board)
+    #     #     min_y, max_y = 0, len(board[0])
+    #     # else:
+    #     #     min_x, max_x = max(0, head.x - crop), min(self.width, head.x + crop)
+    #     #     min_y, max_y = max(0, head.y - crop), min(self.height, head.y + crop)
+    #     if ff_split:
+    #         if snake.facing_direction() in ["left", "right"]:
+    #             left_x, left_y = head.moved_to("up").as_tuple()
+    #             right_x, right_y = head.moved_to("down").as_tuple()
+    #         else:
+    #             left_x, left_y = head.moved_to("left").as_tuple()
+    #             right_x, right_y = head.moved_to("right").as_tuple()
+    #         fill(left_x, left_y, board, initial_square=False, avoid_risk=risk_averse)
+    #         left_filled = sum((row == 1).sum() for row in board)
+    #         fill(right_x, right_y, board, initial_square=False, avoid_risk=risk_averse)
+    #         right_filled = sum((row == 1).sum() for row in board) - left_filled + 1
+    #         flood_fill_ra = max(left_filled - 1, 1e-15) if left_filled > right_filled else max(right_filled - 1, 1e-15)
+    #         undesired = min([left_filled, right_filled])
+    #     else:
+    #         fill(head.x, head.y, board, initial_square=True, avoid_risk=risk_averse)
+    #         filled = sum((row == 1).sum() for row in board)
+    #         flood_fill_ra = max(filled - 1, 1e-15)  # Exclude the head from the count, but cannot ever be negative
+    #
+    #     if full_package:
+    #         # Repeat but assume all risky squares are fair game
+    #         for risky_sq in risky_squares:
+    #             # Situations where our snake's head was previously overwritten by a risky square
+    #             if risky_sq == head and board[risky_sq.x][risky_sq.y] != 1:
+    #                 board[risky_sq.x][risky_sq.y] = 1
+    #                 fill(risky_sq.x, risky_sq.y, board, initial_square=True, avoid_risk=False)
+    #             # Ensure that the skipped square can be connected to the main flood fill
+    #             surr_risks = risky_sq.adjacent_pos(len(board), len(board[0]))
+    #             for surr_risk in surr_risks:
+    #                 if board[surr_risk.x][surr_risk.y] == 1:
+    #                     # Remove from the list of boundary squares and update the fill
+    #                     if risky_sq in boundaries:
+    #                         boundaries = [pos for pos in boundaries if pos != risky_sq]
+    #                     fill(risky_sq.x, risky_sq.y, board, initial_square=True, avoid_risk=False)
+    #                     break
+    #         filled = sum((row == 1).sum() for row in board)
+    #         flood_fill_all = max(filled - 1, 1e-15) if ff_split else max(filled - 1, 1e-15)
+    #
+    #     if get_boundaries:
+    #         return flood_fill_ra, boundaries
+    #     elif get_touching_opps:
+    #         return flood_fill_ra, heads_in_contact
+    #     elif full_package:
+    #         if confine_to is None:
+    #             self.space_ra = flood_fill_ra
+    #             self.space_all = flood_fill_all
+    #             self.ff_bounds = list(set(boundaries))
+    #             self.touch_opps = list(set(heads_in_contact))
+    #             return self.space_ra, self.space_all, self.ff_bounds, self.touch_opps
+    #         else:
+    #             return flood_fill_ra, flood_fill_all, list(set(boundaries)), list(set(heads_in_contact))
+    #     else:
+    #         return flood_fill_ra

@@ -86,4 +86,9 @@ class Pos:
         xs, ys = bounds
         return xs[0] <= self.x < xs[1] and ys[0] <= self.y < ys[1]
 
+    def is_diagonal(self, pos):
+        """Determine if two points are diagonal."""
+        dx = abs(self.x - pos.x)
+        dy = abs(self.y - pos.y)
+        return dx == dy
     
