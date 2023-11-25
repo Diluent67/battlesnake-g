@@ -295,7 +295,6 @@ class Battlesnake:
         direction = snake.facing_direction()
         possible_moves = self.get_moveset(snake.id, risk_averse=True, turn="static")
 
-
         # A small database that covers different edge kill scenarios
         dir_dict = {
             "vertical": {
@@ -321,6 +320,8 @@ class Battlesnake:
         ax_dir = dir_data["axis_dir"]
         scan_dir = dir_data["scan_dir"]
 
+        headed = "horizontal" if direction in ["left", "right"] else "vertical"
+
         # Determine if we can get edge-killed by a longer snake in front of us, behind us, or two over from us
         board = self.board.board
         trapped_sides = [False, False]
@@ -334,6 +335,61 @@ class Battlesnake:
                 esc_move = getattr(snake.head, ax) + look
                 # Off-limits if it's outside the board
                 if bounds[0] <= esc_move < bounds[1]:
+
+
+                    if headed == "horizontal":
+                        head_x, head_y = getattr(snake.head, ax_dir), getattr(snake.head, ax)
+                        esc_move_y = head_y + look
+                        side_slice = board[head_x:, esc_move_y] if scan_dir == +1 \
+                            else board[:(head_x + 1), esc_move_y][::-1]
+                        our_slice = board[head_x:, getattr(snake.head, ax)] if scan_dir == +1 \
+                            else board[:(head_x + 1), getattr(snake.head, ax)][::-1]
+                        killer_behind = Pos({"x": head_x - 1, "y": esc_move_y}) if scan_dir == +1 \
+                            else Pos({"x": head_x + 1, "y": esc_move_y})
+                        threat_two_over = Pos({"x": head_x, "y": head_y + (look * 2)}) if (
+                                0 <= head_y + (look * 2) < self.board.height) else None
+                        if look == +1:
+                            side_tunnel_behind = board[head_x - 1, head_y:][::-1][1:] if scan_dir == +1 \
+                                else board[head_x + 1, head_y:][1:]
+                        else:
+                            side_tunnel_behind = board[head_x - 1, :(head_y + 1)][::-1][1:] if scan_dir == +1 \
+                                else board[head_x + 1, :(head_y + 1)][::-1][1:]
+                        if (head_x == 0 and direction == "left") or (
+                                head_x == self.board.width - 1 and direction == "right"):
+                            side_tunnel_ahead = None
+                        else:
+                            side_tunnel_ahead = board[head_x - 1, head_y:][1:] if look == +1 \
+                                else board[head_x + 1, :(head_y + 1)][::-1][1:]
+
+                        # Situations where we're forced to pick a side and are restrained to a "tunnel"
+                        if direction not in possible_moves:
+                            danger_flag = [False, False]
+                            for strip_num, strip in enumerate([side_tunnel_behind, side_tunnel_ahead]):
+                                if strip is None:
+                                    danger_flag[strip_num] = True
+                                    continue
+                                if strip[0] >= 10 and strip[0] != 100:
+                                    if 0 not in strip:
+                                        danger_flag[strip_num] = True
+                                        continue
+                                    freedom = strip.tolist().index(0)
+                                    if strip_num == 0:
+                                        if strip_num == 0:
+                                            x_loc = +1 if scan_dir == -1 else -1
+                                        else:
+                                            x_loc = -1 if scan_dir == -1 else +1
+                                        kill_spot = Pos({"x": head_x + x_loc, "y": head_y + freedom + 1})
+                                        for opp_killer in self.opponents.values():
+                                            if opp_killer.head.manhattan_dist(kill_spot) <= freedom:
+                                                danger_flag[strip_num] = True
+                                                # edge_killers[num] = opp_killer
+                                                continue
+                            if sum(danger_flag) == 2:
+                                trapped_sides[num] = True
+
+
+
+
                     # Check the space in the column/row to the side and ahead of us
                     if ax == "x":
                         strip = board[esc_move, getattr(snake.head, ax_dir):] if scan_dir == +1 \
@@ -353,6 +409,9 @@ class Battlesnake:
                         if 11 in our_strip:
                             self_collision_dist = our_strip.tolist().index(11)
                             self_collision_pos = self.you.head.moved_to(direction, distance=self_collision_dist)
+                            # There's space to escape, so we're not trapped
+                            if 0 in strip[:self_collision_dist]:
+                                continue
                             # If our tail doesn't get out of our way in time, we're doomed
                             if len(self.you.body) - self.you.body.index(self_collision_pos) > self_collision_dist:
                                 trapped_sides[num] = True
@@ -427,37 +486,66 @@ class Battlesnake:
                         edge_killers[num] = sorted(opp_killers, key=lambda op: op.length, reverse=True)[0]
                         continue
 
-                    # Situations where we're forced to pick a side and are restrained to a "tunnel"
-                    if direction not in possible_moves:
-                        if ax == "x":
-                            strip1, strip2 = None, None
-                            if getattr(snake.head, ax_dir) + 1 < self.board.height:
-                                strip1 = board[esc_move:, getattr(snake.head, ax_dir) + 1] if scan_dir == +1 \
-                                    else board[:(esc_move + 1), getattr(snake.head, ax_dir) + 1][::-1]
-                            if getattr(snake.head, ax_dir) - 1 >= 0:
-                                strip2 = board[esc_move:, getattr(snake.head, ax_dir) - 1] if scan_dir == +1 \
-                                    else board[:(esc_move + 1), getattr(snake.head, ax_dir) - 1][::-1]
-
-                            danger_flag = [False, False]
-                            for strip_num, strip in enumerate([strip1, strip2]):
-                                if strip is None:
-                                    danger_flag[strip_num] = True
-                                    continue
-                                if strip[0] >= 10 and strip[0] != 100:
-                                    if 0 not in strip:
-                                        danger_flag[strip_num] = True
-                                        continue
-                                    freedom = strip.tolist().index(0)
-                                    if strip_num == 0:
-                                        edge_killer = Pos({"x": getattr(snake.head, ax) + freedom + 1,
-                                                           "y": getattr(snake.head, ax_dir) + 1}) if scan_dir == +1 \
-                                            else Pos({"x": getattr(snake.head, ax) - freedom - 1,
-                                                      "y": getattr(snake.head, ax_dir) + 1})
-                                        for opp_killer in self.opponents.values():
-                                            if opp_killer.head.manhattan_dist(edge_killer) <= freedom:
-                                                trapped_sides[num] = True
-                                                edge_killers[num] = opp_killer
-                                                continue
+                    # # Situations where we're forced to pick a side and are restrained to a "tunnel"
+                    # if direction not in possible_moves:
+                    #     if ax == "x":
+                    #         strip1, strip2 = None, None
+                    #         if getattr(snake.head, ax_dir) + 1 < self.board.height:
+                    #             strip1 = board[esc_move:, getattr(snake.head, ax_dir) + 1] if scan_dir == +1 \
+                    #                 else board[:(esc_move + 1), getattr(snake.head, ax_dir) + 1][::-1]
+                    #         if getattr(snake.head, ax_dir) - 1 >= 0:
+                    #             strip2 = board[esc_move:, getattr(snake.head, ax_dir) - 1] if scan_dir == +1 \
+                    #                 else board[:(esc_move + 1), getattr(snake.head, ax_dir) - 1][::-1]
+                    #
+                    #         danger_flag = [False, False]
+                    #         for strip_num, strip in enumerate([strip1, strip2]):
+                    #             if strip is None:
+                    #                 danger_flag[strip_num] = True
+                    #                 continue
+                    #             if strip[0] >= 10 and strip[0] != 100:
+                    #                 if 0 not in strip:
+                    #                     danger_flag[strip_num] = True
+                    #                     continue
+                    #                 freedom = strip.tolist().index(0)
+                    #                 if strip_num == 0:
+                    #                     edge_killer = Pos({"x": getattr(snake.head, ax) + freedom + 1,
+                    #                                        "y": getattr(snake.head, ax_dir) + 1}) if scan_dir == +1 \
+                    #                         else Pos({"x": getattr(snake.head, ax) - freedom - 1,
+                    #                                   "y": getattr(snake.head, ax_dir) + 1})
+                    #                     for opp_killer in self.opponents.values():
+                    #                         if opp_killer.head.manhattan_dist(edge_killer) <= freedom:
+                    #                             trapped_sides[num] = True
+                    #                             edge_killers[num] = opp_killer
+                    #                             continue
+                    #     else:
+                    #         strip1, strip2 = None, None
+                            # if getattr(snake.head, ax) + 1 < self.board.width:
+                            #     strip1 = board[getattr(snake.head, ax_dir) - 1, :(esc_move + 1)] if scan_dir == +1 \
+                            #         else board[getattr(snake.head, ax_dir) + 1, :(esc_move + 1)]
+                            # if getattr(snake.head, ax) - 1 >= 0:  # TODO fix later
+                            #     strip2 = board[getattr(snake.head, ax_dir) + 1, :(esc_move + 1)] if scan_dir == +1 \
+                            #         else board[getattr(snake.head, ax_dir) - 1, :(esc_move + 1)]
+                            #
+                            # danger_flag = [False, False]
+                            # for strip_num, strip in enumerate([strip1, strip2]):
+                            #     if strip is None:
+                            #         danger_flag[strip_num] = True
+                            #         continue
+                            #     if strip[0] >= 10 and strip[0] != 100:
+                            #         if 0 not in strip:
+                            #             danger_flag[strip_num] = True
+                            #             continue
+                            #         freedom = strip.tolist().index(0)
+                            #         if strip_num == 0:
+                            #             edge_killer = Pos({"x": getattr(snake.head, ax_dir) - 1,
+                            #                                "y": getattr(snake.head, ax) + freedom + 1}) if scan_dir == +1 \
+                            #                 else Pos({"x": getattr(snake.head, ax_dir) + 1,
+                            #                           "y": getattr(snake.head, ax) + freedom + 1})
+                            #             for opp_killer in self.opponents.values():
+                            #                 if opp_killer.head.manhattan_dist(edge_killer) <= freedom:
+                            #                     trapped_sides[num] = True
+                            #                     edge_killers[num] = opp_killer
+                            #                     continue
 
 
 
@@ -588,21 +676,6 @@ class Battlesnake:
         edge_killed = self.edge_kill_detection(self.you.id)
         space_penalty = -1e7 if edge_killed else space_penalty
 
-        # # Are we cornering ourselves?
-        # next_moves = self.get_moveset(snake_id=self.you.id, risk_averse=True)
-        # next_moves_with_three_edges = []
-        # for next_move in next_moves:
-        #     with_three_edges = False
-        #     for i in range(1, 3):
-        #         node_ahead = self.you.head.moved_to(next_move, distance=i)
-        #         node_ahead_edges = len(self.board.graph.edges(node_ahead.as_tuple())) - 1
-        #         if node_ahead_edges == 3:
-        #             with_three_edges = True
-        #             break
-        #     next_moves_with_three_edges.append(with_three_edges)
-        # if sum(next_moves_with_three_edges) == 0:
-        #     corner_penalty = -500
-
         # We want to minimise available space for our opponents via flood fill (but only when there are fewer snakes in
         # our vicinity)
         dist_from_enemies = sorted(
@@ -711,7 +784,7 @@ class Battlesnake:
         collision_inbound = False
         me = self.get_moveset(snake_id=self.you.id)
         closest_opp = sorted(self.opponents.values(),
-                             key=lambda opp: self.board.shortest_dist(self.you.head, opp.head))[0]
+                             key=lambda opp: self.board.shortest_dist(self.you.head, opp.head, efficient=False))[0]
 
         them = self.get_moveset(snake_id=closest_opp.id)
         diff_lengths = closest_opp.length - self.you.length
@@ -727,18 +800,33 @@ class Battlesnake:
         else:
             danger_penalty = 0
 
+        # Can we single out this opponent?
+        our_dist = self.you.head.manhattan_dist(closest_opp.head)
+        dist_from_other_opponents = [closest_opp.head.manhattan_dist(opp.head) for opp in self.opponents.values() if opp.id != closest_opp.id]
+        if (len(dist_from_other_opponents) == 0 or min(dist_from_other_opponents) > our_dist) and self.you.length > closest_opp.length:
+            # Good to be aggressive, but only if it's worth it
+            if our_dist <= 5:
+                food_weight /= 10
+
+
+
+
         # Can we cut off our opponents?
-
-
         # TODO corner edge case
         cutoff_bonus = 0
         cutting_off = None
+        proceed_edge_kill = False
+
+        if our_dist <= 5:
+            are_we_closest = [snake for snake in self.all_snakes.values() if closest_opp.head.manhattan_dist(snake.head) <= our_dist and snake.id not in [self.you.id, closest_opp.id]]
+            if len(are_we_closest) == 0:
+                proceed_edge_kill = True
         if kill_bonus >= 2000:
             cutoff_bonus = kill_bonus
-        elif (self.you.head.within_bounds(closest_opp.peripheral_vision(return_pos_only=True)) and
+        elif proceed_edge_kill or ((self.you.head.within_bounds(closest_opp.peripheral_vision(return_pos_only=True)) and
                 not closest_opp.head.within_bounds(
                     self.you.peripheral_vision(direction=self.you.facing_direction(), return_pos_only=True)) and
-                (on_edge or (not on_edge and self.you.facing_direction() in me))):  # continue to cutoff, unless we're on the edge for an edge kill?
+                (on_edge or (not on_edge and self.you.facing_direction() in me)))):  # continue to cutoff, unless we're on the edge for an edge kill?
             cutting_off = self.board.fast_flood_fill(closest_opp.id, opp_cutoff=self.you.id)
             if cutting_off <= 15:
                 cutoff_bonus = 2500
@@ -982,7 +1070,7 @@ class Battlesnake:
                         opp_scores.append((opp_id, 1e6))
                         continue
                     moved_head = opp_snake.head.moved_to(move)
-                    dist_from_us = self.board.shortest_dist(self.you.head, moved_head)
+                    dist_from_us = self.board.shortest_dist(self.you.head, moved_head, efficient=False)
                     # if self.you.head.manhattan_dist(opp_snake.head) > focus_within:
                     #     opp_space = 1e6
                     # else:
@@ -1002,9 +1090,9 @@ class Battlesnake:
                         aggressor -= 0.5
                     opp_scores.append(
                         (opp_id,
-                         aggressor + opp_food + opp_penalty)  # ((10 / opp_space) if opp_space >= 1 else 0)
+                         aggressor + opp_food / 10 + opp_penalty)  # ((10 / opp_space) if opp_space >= 1 else 0)Space: {round(((10 / opp_space) if opp_space >= 1 else 0), 2)},
                     )
-                    # print(f"Dist: {dist_from_us}, Aggro: {aggressor}, Food: {opp_food}, Space: {round(((10 / opp_space) if opp_space >= 1 else 0), 2)}, Pen: {opp_penalty})")
+                    # print(f"Dist: {dist_from_us}, Aggro: {aggressor}, Food: {opp_food},  Pen: {opp_penalty})")
                 # Sort the opponent moveset by the computed heuristics
                 opp_moves = [x for _, x in sorted(zip([s[1] for s in opp_scores], opp_moves))]
                 opp_scores = sorted(opp_scores, key=lambda sc: sc[1])
@@ -1073,7 +1161,7 @@ class Battlesnake:
             if self.debugging:
                 by_number = []
                 for move_combo in sim_movesets:
-                    by_number.append([f"{num + 1}: {move_combo[opp]}" for num, opp in enumerate(self.opponents.keys())])
+                    by_number.append([f"{num + 2}: {move_combo[opp]}" for num, opp in enumerate(self.opponents.keys())])
                 sim_movesets = by_number
 
             logging.info(f"Simulated {len(sim_move_combos)} possible move combos in "

@@ -55,7 +55,7 @@ class Board:
             11: "1", 22: "2", 33: "3", 44: "4", 55: "5", 66: "6", 77: "7", 88: "8",  # Up to 8 snakes
             100: "f",  # Food
             255: "x",  # Hazards or off-limit squares
-            "O": "O"  # For visualising nodes with "display_graph"
+            "O": "O", " ": " "  # For visualising nodes with "display_graph"
         }
 
     def as_dict(self):
@@ -154,7 +154,7 @@ class Board:
 
     def display_graph(self, show: Optional[bool] = True) -> str:
         """Convert the board's NetworkX graph representation into a nicely formatted string for convenient debugging."""
-        board = np.full((self.width, self.height), 0)
+        board = np.full((self.width, self.height), " ")
         for node in self.graph.nodes:
             board[node[0], node[1]] = "O"
         return self.display(board=board, show=show)
@@ -169,7 +169,7 @@ class Board:
             matches = sorted(matches, key=lambda snake: snake.length, reverse=True)
         return matches[0]
 
-    def shortest_dist(self, start: Pos, end: Pos) -> int:
+    def shortest_dist(self, start: Pos, end: Pos, efficient: Optional[bool] = True) -> int:
         """
         Get the best approximation for the distance between two positions. When possible, use Dijkstra's algorithm to
         get an exact path, but if that's not possible (e.g. due to obstructions), return 1e6 + the Manhattan distance.
@@ -188,7 +188,7 @@ class Board:
         :return: The closest distance between the start and end points. If there's no connecting path, approximate with
             1e6 + the Manhattan distance.
         """
-        closest = self.dijkstra_shortest_path(start, end)
+        closest = self.dijkstra_shortest_path(start, end, efficient=efficient)
         if closest == 1e6:
             closest += start.manhattan_dist(end)
         return closest
@@ -245,6 +245,7 @@ class Board:
             start: Pos,
             end: Pos,
             snake_id: Optional[str] = None,
+            efficient: Optional[bool] = True,
             return_full_path: Optional[bool] = False
     ) -> int | tuple[int, list]:
         """
@@ -258,7 +259,7 @@ class Board:
         :return: The shortest distance between the start and end inputs (1e6 if no path could be found)
         """
         # Running Dijkstra's is time-consuming, so skip over scenarios where the additional accuracy is negligible
-        if (manhattan_approx := start.manhattan_dist(end)) >= 10:
+        if efficient and (manhattan_approx := start.manhattan_dist(end)) >= 10:
             return (manhattan_approx, None) if return_full_path else manhattan_approx
 
         start = start.as_tuple()
