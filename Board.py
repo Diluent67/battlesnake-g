@@ -514,6 +514,7 @@ class Board:
             confine_to: Optional[str] = None,
             confined_dist: Optional[int] = 3,
             opp_cutoff: Optional[str] = None,
+            cutoff_prejudice: Optional[bool] = False,
             full_package: Optional[bool] = False,
     ):
         """
@@ -559,11 +560,19 @@ class Board:
         # See what happens if an opponent were to keep moving forward and "cut off" our space
         if opp_cutoff:
             opp_snake = self.all_snakes[opp_cutoff]
-            opp_dir = opp_snake.facing_direction()
-            opp_new_head = opp_snake.head.moved_to(opp_dir, 1)
-            while not self.evaluate_pos(opp_new_head, opp_cutoff, turn_type="static")[1]:
-                board[opp_new_head.x, opp_new_head.y] = 255
-                opp_new_head = opp_new_head.moved_to(opp_dir, 1)
+            if cutoff_prejudice:
+                opp_dirs = ["up", "left", "right", "down"]
+                for opp_dir in opp_dirs:
+                    opp_new_head = opp_snake.head.moved_to(opp_dir, 1)
+                    while not self.evaluate_pos(opp_new_head, opp_cutoff, turn_type="static")[1]:
+                        board[opp_new_head.x, opp_new_head.y] = 255
+                        opp_new_head = opp_new_head.moved_to(opp_dir, 1)
+            else:
+                opp_dir = opp_snake.facing_direction()
+                opp_new_head = opp_snake.head.moved_to(opp_dir, 1)
+                while not self.evaluate_pos(opp_new_head, opp_cutoff, turn_type="static")[1]:
+                    board[opp_new_head.x, opp_new_head.y] = 255
+                    opp_new_head = opp_new_head.moved_to(opp_dir, 1)
 
         # Narrow down a portion of the board that represents the snake's peripheral vision
         if confine_to is not None:

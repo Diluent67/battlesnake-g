@@ -631,9 +631,12 @@ class Battlesnake:
             food_weight = 200
         elif self.you.length > max(opp_lengths):  # If we are the longest snake
             longest_flag = True
-            if self.you.length > max(opp_lengths) + 5:
+            if self.you.length > max(opp_lengths) + 10:
                 food_weight = 1
                 incr_length_weight = 1
+            elif self.you.length > max(opp_lengths) + 5:
+                food_weight = 10
+                incr_length_weight = 10
             elif dist_food < min(dist_from_enemies):  # Might as well get food if convenient
                 food_weight = 100
             else:  # Food isn't that important at the moment
@@ -721,7 +724,7 @@ class Battlesnake:
                                                       ( self.all_snakes[closest_enemy].head.x in [0, 1, self.board.width - 2, self.board.width - 1] and
                                                        self.all_snakes[closest_enemy].head.y in [0, 1, self.board.height - 2, self.board.height - 1])) # TODO BROKE EVERYTHING
 
-            if aggression_okay and ( periph_ra > available_enemy_space or space_all > available_enemy_space_all):
+            if aggression_okay and ( periph_ra + 1 >= available_enemy_space or space_all > available_enemy_space_all):
                 if available_enemy_space_ra <= 5:
                     kill_bonus = 2000
 
@@ -767,6 +770,8 @@ class Battlesnake:
             dist_to_enemy = 0
         if dist_to_enemy > 0 and len(self.opponents) == 1:
             aggression_weight = 1500
+        elif dist_to_enemy <= 5:
+            aggression_weight = 500
         elif dist_to_enemy > 0:
             aggression_weight = 250
         else:
@@ -886,7 +891,8 @@ class Battlesnake:
             if self.you.length < closest_opp.length:
                 if opp_cutoff < 15 and self.you.head.manhattan_dist(closest_opp.head) <= 6:
                     if space_penalty == 0:
-                        space_penalty = -500
+                        if self.board.shortest_dist(self.you.head, self.you.tail, efficient=True) > opp_cutoff / 2:
+                            space_penalty = -500
             else:
                 if opp_cutoff <= 15 and us_cutoff > opp_cutoff:  # Penalise if we're in a worse position
                     if space_penalty == 0:
