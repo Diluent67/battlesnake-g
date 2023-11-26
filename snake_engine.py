@@ -816,7 +816,8 @@ class Battlesnake:
                 # If we have no choice but to head towards the opponent as well  (e.g. if the enemy is heading up and left, we have no choice but to move down or right)
                 if sum([esc in me for esc in connection]) == 0:  # TODO code flood fill for the esc direction in case they're trapping us
                     collision_inbound = True
-        if collision_inbound:
+        dist_away = self.you.head.manhattan_dist(closest_opp.head)
+        if collision_inbound and dist_away <= 4:
             danger_penalty = -15 * diff_lengths - 15/self.you.head.manhattan_dist(closest_opp.head)
             food_weight = 1
             if shortest_flag:
