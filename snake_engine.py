@@ -621,8 +621,12 @@ class Battlesnake:
         # Determine how important food is
         opp_lengths = [opp.length for opp in self.opponents.values()]
         longest_flag = False
+        shortest_flag = False
         if self.you.health < 40:  # Low health alert
             food_weight = 300
+        elif self.you.length < min(opp_lengths):
+            shortest_flag = True
+            food_weight = 250
         elif self.you.length <= max(opp_lengths):  # If we're not the longest snake
             food_weight = 200
         elif self.you.length > max(opp_lengths):  # If we are the longest snake
@@ -810,7 +814,10 @@ class Battlesnake:
         if collision_inbound:
             danger_penalty = -15 * diff_lengths - 15/self.you.head.manhattan_dist(closest_opp.head)
             food_weight = 1
-            incr_length_weight = 1
+            if shortest_flag:
+                incr_length_weight = 1250 / 2
+            else:
+                incr_length_weight = 1
         else:
             danger_penalty = 0
 
@@ -877,7 +884,7 @@ class Battlesnake:
                 if opp_cutoff <= 15 and self.you.head.manhattan_dist(closest_opp.head) >= 5:
                     opp_cutoff = space_ra
             if self.you.length < closest_opp.length:
-                if opp_cutoff < 15:
+                if opp_cutoff < 15 and self.you.head.manhattan_dist(closest_opp.head) <= 6:
                     if space_penalty == 0:
                         space_penalty = -500
             else:
@@ -1010,6 +1017,10 @@ class Battlesnake:
             clock_in = time.time_ns()
             # Determine our snake's possible moves, sorted by the amount of immediate space it'd give us
             possible_moves = self.get_moveset(self.you.id, risk_averse=self.you.length < 5, sort_by_periph=True)
+            # At the start of the game, 4 moves are considered which is time-consuming
+            if self.turn == 0:
+                rm_moves = self.you.head.direction_to(Pos({"x": self.board.width // 2, "y": self.board.height // 2}))
+                possible_moves = [move for move in possible_moves if move not in rm_moves]
             # In the early stages of the game, if we're out of risk-averse moves, accept risk
             if len(possible_moves) == 0 and self.you.length <= 5:
                 possible_moves = self.get_moveset(self.you.id, risk_averse=False, sort_by_periph=True)
