@@ -218,7 +218,7 @@ class Battlesnake:
         collision_sq = None
         if len(touch_opps) > 0:
             dist_to_trapped_opp, path_to_trapped_opp = self.board.dijkstra_shortest_path(
-                self.you.head, touch_opps[0], snake_id=self.you.id, return_full_path=True)
+                self.you.head, touch_opps[0], snake_id=self.you.id, return_full_path=True, efficient=False)
             trapped_opp = self.board.identify_snake(touch_opps[0])
             trapped_opp_moveset = self.get_moveset(trapped_opp.id, risk_averse=True)
             trapped_with_us = True
@@ -230,11 +230,11 @@ class Battlesnake:
                     trapped_with_us = False
                     touch_opps.remove(trapped_opp.head)
                     break
-            # We'll win the incoming collision if we're longer and colliding on the same square
-            if trapped_with_us and dist_to_trapped_opp % 2 == 1 and self.you.length > trapped_opp.length:
-                return False, None
-            elif trapped_with_us:
-                collision_sq = path_to_trapped_opp[len(path_to_trapped_opp) // 2]
+            # # We'll win the incoming collision if we're longer and colliding on the same square
+            # if trapped_with_us and dist_to_trapped_opp % 2 == 1 and self.you.length > trapped_opp.length:
+            #     return False, None
+            # elif trapped_with_us:
+            #     collision_sq = path_to_trapped_opp[len(path_to_trapped_opp) // 2]
 
         # If space frees up after X moves, identify where the opening in our flood fill is
         openings_in_boundary = []
@@ -1023,10 +1023,6 @@ class Battlesnake:
             clock_in = time.time_ns()
             # Determine our snake's possible moves, sorted by the amount of immediate space it'd give us
             possible_moves = self.get_moveset(self.you.id, risk_averse=self.you.length < 5, sort_by_periph=True)
-            # At the start of the game, 4 moves are considered which is time-consuming
-            if self.turn == 0:
-                rm_moves = self.you.head.direction_to(Pos({"x": self.board.width // 2, "y": self.board.height // 2}))
-                possible_moves = [move for move in possible_moves if move not in rm_moves]
             # In the early stages of the game, if we're out of risk-averse moves, accept risk
             if len(possible_moves) == 0 and self.you.length <= 5:
                 possible_moves = self.get_moveset(self.you.id, risk_averse=False, sort_by_periph=True)
@@ -1151,7 +1147,9 @@ class Battlesnake:
 
             # Determine the maximum number of move combinations
             opps_nearby = [opp for opp in self.opponents.values() if self.you.head.manhattan_dist(opp.head) <= 5]
-            if len(self.opponents) >= 7:
+            if self.turn == 0:
+                num_sims = 1
+            elif len(self.opponents) >= 7:
                 num_sims = 2
             elif len(opps_nearby) >= 3:
                 num_sims = 3
