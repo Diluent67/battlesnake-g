@@ -180,6 +180,7 @@ class Battlesnake:
                         if len(possible_killers) > 0:
                             killer = sorted(possible_killers, key=lambda op: op.length, reverse=True)[0]
                             distraction_score = new_game.board.closest_food(killer.id)[0]
+                            distraction_score = 1e6 if distraction_score == np.inf else distraction_score
                             new_game.killer_intel = (killer.length, distraction_score)
                     # Keep track if our snake was the killer
                     if snake_id != self.you.id and snake.head.manhattan_dist(new_game.you.head) <= 2:
@@ -602,14 +603,12 @@ class Battlesnake:
 
         next_moves = self.get_moveset(snake_id=self.you.id, risk_averse=True)
         # How much space do we have?
-        clock_in = time.time_ns()
         space_ra, space_all, ff_bounds = self.board.fast_flood_fill(self.you.id, full_package=True)
-        clock_out_ff = round((time.time_ns() - clock_in) / 1000000, 3)
-        # print(clock_out_reg - clock_out_ff)
-        # assert clock_out_reg-clock_out_ff > 0, f"{clock_out_reg} - {clock_out_ff}"
-        # assert abs(space_ra - space_ra_fast) <= 1, f"{space_ra} != {space_ra_fast}"
-        # assert abs(space_all - space_all_fast) <= 1, f"{space_all} != {space_all_fast}"
         space_ra_weight = 1
+
+        # Add tails
+        add_space = [opp.length for opp in self.opponents.values() if opp.tail.manhattan_dist(self.you.head) == 1]
+        space_all += max(add_space) if len(add_space) > 0 else 0
 
         # How cl
         dist_from_enemies = sorted(
@@ -653,6 +652,10 @@ class Battlesnake:
             if xs[1] - xs[0] <= self.board.width // 3 or ys[1] - ys[0] <= self.board.height // 3:
                 periph_penalty = -100
 
+        # Can we touch any tails? TODO
+        if space_all <= 15:
+            pass
+
         # How cramped on space are we?
         space_penalty = 0
         if space_all <= 3:
@@ -674,7 +677,7 @@ class Battlesnake:
 
         # Are we in danger of getting edge-killed?
         edge_killed = self.edge_kill_detection(self.you.id)
-        space_penalty = -1e7 if edge_killed else space_penalty
+        space_penalty = -1e6 if edge_killed else space_penalty
 
         # We want to minimise available space for our opponents via flood fill (but only when there are fewer snakes in
         # our vicinity)
@@ -706,7 +709,11 @@ class Battlesnake:
 
             available_enemy_space = self.board.fast_flood_fill(closest_enemy, risk_averse=True, confine_to=confine_to)
 
-            aggression_okay = self.you.length >= 6 and space_ra >= 5 or (self.you.length < 6 and
+            if space_ra < 5:
+                override = self.you.head.manhattan_dist(self.all_snakes[closest_enemy].head) <= 2
+            else:
+                override = True
+            aggression_okay = (self.you.length >= 6 and override) or (self.you.length < 6 and
                                                       ( self.all_snakes[closest_enemy].head.x in [0, 1, self.board.width - 2, self.board.width - 1] and
                                                        self.all_snakes[closest_enemy].head.y in [0, 1, self.board.height - 2, self.board.height - 1])) # TODO BROKE EVERYTHING
 
@@ -780,6 +787,11 @@ class Battlesnake:
                 len(self.opponents) <= 2 or num_threats == 0) and best_food is None
         # Are we on the edge? Try to stay away if possible
         on_edge = self.you.head.x in [0, self.board.width - 1] or self.you.head.y in [0, self.board.height - 1]
+        on_edge_penalty = -20 if not (self.trapped or edge_killed) else 0
+        if on_edge_penalty == -20:
+            if not (self.you.head.x == 0 or self.you.head.y == 0):
+                on_edge_penalty = -10
+
 
         collision_inbound = False
         me = self.get_moveset(snake_id=self.you.id)
@@ -860,8 +872,10 @@ class Battlesnake:
                     us_cutoff = self.board.fast_flood_fill(closest_opp.id, opp_cutoff=self.you.id)
                 opp_cutoff = self.board.fast_flood_fill(self.you.id, opp_cutoff=closest_opp.id)
             else:
-                us_cutoff = self.board.fast_flood_fill(opps_nearby[0].id, opp_cutoff=self.you.id)
-                opp_cutoff = self.board.fast_flood_fill(self.you.id, opp_cutoff=opps_nearby[0].id)
+                us_cutoff = self.board.fast_flood_fill(closest_opp.id, opp_cutoff=self.you.id)
+                opp_cutoff = self.board.fast_flood_fill(self.you.id, opp_cutoff=closest_opp.id)  # TODO opps_nearby[0] WTF
+                if opp_cutoff <= 15 and self.you.head.manhattan_dist(closest_opp.head) >= 5:
+                    opp_cutoff = space_ra
             if self.you.length < closest_opp.length:
                 if opp_cutoff < 15:
                     if space_penalty == 0:
@@ -899,7 +913,7 @@ class Battlesnake:
             periph_all_weight = 0.5
 
         centre_control_weight = 20 if not (self.trapped or edge_killed) else 0
-        on_edge_penalty = -20 if not (self.trapped or edge_killed) else 0
+
         # if sum([n in necessary_moves for n in next_moves]) < len(necessary_moves):  # Don't penalise being on the edge if we've no other choice
         #     on_edge_penalty = 0
         threat_proximity_weight = -25
@@ -970,7 +984,7 @@ class Battlesnake:
                     # If we got immediately killed, then it's much worse than an edge kill down the line
                     immediately_killed = -1e8 if depth >= self.minimax_search_depth - 2 else 0
                     # Add a killer penalty score to give higher weight to more advantageous deaths
-                    killer_penalty = (immediately_killed if distraction >= 5 else 0) - killer_length + (distraction * 2 if distraction <= 4 else 0)
+                    killer_penalty = (immediately_killed if distraction >= 11 else 0) - killer_length + (distraction * 2  if distraction <= 50 else 0)
                 # Big idea: reward slower deaths, penalise immediate death, account for dumb opponents not killing
                 heuristic = -1e6 + (self.minimax_search_depth - depth) + killer_penalty
                 logging.info(f"Our snake died...\nHeuristic = {heuristic}")
@@ -995,7 +1009,7 @@ class Battlesnake:
 
             clock_in = time.time_ns()
             # Determine our snake's possible moves, sorted by the amount of immediate space it'd give us
-            possible_moves = self.get_moveset(self.you.id, risk_averse=self.you.length <= 5, sort_by_periph=True)
+            possible_moves = self.get_moveset(self.you.id, risk_averse=self.you.length < 5, sort_by_periph=True)
             # In the early stages of the game, if we're out of risk-averse moves, accept risk
             if len(possible_moves) == 0 and self.you.length <= 5:
                 possible_moves = self.get_moveset(self.you.id, risk_averse=False, sort_by_periph=True)
