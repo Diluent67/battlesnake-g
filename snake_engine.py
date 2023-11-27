@@ -25,7 +25,8 @@ class Battlesnake:
             game_state: dict,
             debugging: Optional[bool] = False,
             og_length: Optional[bool] = None,
-            kills_by_depth: Optional[list] = None
+            kills_by_depth: Optional[list] = None,
+            local: Optional[bool] = False
     ):
         """
         Represents our Battlesnake game and includes all our decision-making methods
@@ -35,13 +36,14 @@ class Battlesnake:
         :param og_length:
         :param kills_by_depth:
         """
-        # Weird edge case when running locally where the "you" snake is not our actual snake
-        if game_state["you"]["name"] not in my_name:
-            right_you = [snake_dict for snake_dict in game_state["board"]["snakes"] if snake_dict["name"] in my_name][0]
-            game_state["you"] = right_you
-        # Another weird edge case where our snake is not in the "snakes" field
-        if game_state["you"]["id"] not in [snake_dict["id"] for snake_dict in game_state["board"]["snakes"]]:
-            game_state["board"]["snakes"].append(game_state["you"])
+        if local:
+            # Weird edge case when running locally where the "you" snake is not our actual snake
+            if game_state["you"]["name"] not in my_name:
+                right_you = [snake_dict for snake_dict in game_state["board"]["snakes"] if snake_dict["name"] in my_name][0]
+                game_state["you"] = right_you
+            # Another weird edge case where our snake is not in the "snakes" field
+            if game_state["you"]["id"] not in [snake_dict["id"] for snake_dict in game_state["board"]["snakes"]]:
+                game_state["board"]["snakes"].append(game_state["you"])
 
         # Battlesnake game data
         self.dict = game_state
@@ -486,76 +488,6 @@ class Battlesnake:
                         trapped_sides[num] = True
                         edge_killers[num] = sorted(opp_killers, key=lambda op: op.length, reverse=True)[0]
                         continue
-
-                    # # Situations where we're forced to pick a side and are restrained to a "tunnel"
-                    # if direction not in possible_moves:
-                    #     if ax == "x":
-                    #         strip1, strip2 = None, None
-                    #         if getattr(snake.head, ax_dir) + 1 < self.board.height:
-                    #             strip1 = board[esc_move:, getattr(snake.head, ax_dir) + 1] if scan_dir == +1 \
-                    #                 else board[:(esc_move + 1), getattr(snake.head, ax_dir) + 1][::-1]
-                    #         if getattr(snake.head, ax_dir) - 1 >= 0:
-                    #             strip2 = board[esc_move:, getattr(snake.head, ax_dir) - 1] if scan_dir == +1 \
-                    #                 else board[:(esc_move + 1), getattr(snake.head, ax_dir) - 1][::-1]
-                    #
-                    #         danger_flag = [False, False]
-                    #         for strip_num, strip in enumerate([strip1, strip2]):
-                    #             if strip is None:
-                    #                 danger_flag[strip_num] = True
-                    #                 continue
-                    #             if strip[0] >= 10 and strip[0] != 100:
-                    #                 if 0 not in strip:
-                    #                     danger_flag[strip_num] = True
-                    #                     continue
-                    #                 freedom = strip.tolist().index(0)
-                    #                 if strip_num == 0:
-                    #                     edge_killer = Pos({"x": getattr(snake.head, ax) + freedom + 1,
-                    #                                        "y": getattr(snake.head, ax_dir) + 1}) if scan_dir == +1 \
-                    #                         else Pos({"x": getattr(snake.head, ax) - freedom - 1,
-                    #                                   "y": getattr(snake.head, ax_dir) + 1})
-                    #                     for opp_killer in self.opponents.values():
-                    #                         if opp_killer.head.manhattan_dist(edge_killer) <= freedom:
-                    #                             trapped_sides[num] = True
-                    #                             edge_killers[num] = opp_killer
-                    #                             continue
-                    #     else:
-                    #         strip1, strip2 = None, None
-                            # if getattr(snake.head, ax) + 1 < self.board.width:
-                            #     strip1 = board[getattr(snake.head, ax_dir) - 1, :(esc_move + 1)] if scan_dir == +1 \
-                            #         else board[getattr(snake.head, ax_dir) + 1, :(esc_move + 1)]
-                            # if getattr(snake.head, ax) - 1 >= 0:  # TODO fix later
-                            #     strip2 = board[getattr(snake.head, ax_dir) + 1, :(esc_move + 1)] if scan_dir == +1 \
-                            #         else board[getattr(snake.head, ax_dir) - 1, :(esc_move + 1)]
-                            #
-                            # danger_flag = [False, False]
-                            # for strip_num, strip in enumerate([strip1, strip2]):
-                            #     if strip is None:
-                            #         danger_flag[strip_num] = True
-                            #         continue
-                            #     if strip[0] >= 10 and strip[0] != 100:
-                            #         if 0 not in strip:
-                            #             danger_flag[strip_num] = True
-                            #             continue
-                            #         freedom = strip.tolist().index(0)
-                            #         if strip_num == 0:
-                            #             edge_killer = Pos({"x": getattr(snake.head, ax_dir) - 1,
-                            #                                "y": getattr(snake.head, ax) + freedom + 1}) if scan_dir == +1 \
-                            #                 else Pos({"x": getattr(snake.head, ax_dir) + 1,
-                            #                           "y": getattr(snake.head, ax) + freedom + 1})
-                            #             for opp_killer in self.opponents.values():
-                            #                 if opp_killer.head.manhattan_dist(edge_killer) <= freedom:
-                            #                     trapped_sides[num] = True
-                            #                     edge_killers[num] = opp_killer
-                            #                     continue
-
-
-
-                                # blocker = Pos({"x": getattr(snake.head, ax) + freedom + 1, "y": getattr(snake.head, ax_dir)}) if scan_dir == +1 \
-                                #     else Pos({"x": getattr(snake.head, ax) - freedom - 1, "y": getattr(snake.head, ax_dir)})
-
-
-                    #     else:  # TODO
-                    #         strip = board[getattr(snake.head, ax_dir), esc_move:] if scan_dir == +1 else board[getattr(snake.head, ax_dir) + 1, esc_move:][::-1]
                 else:
                     trapped_sides[num] = True
                     trapped_by_edge = True
@@ -584,35 +516,30 @@ class Battlesnake:
         incr_length = self.you.length - self.og_length
         incr_length_weight = 1250
 
-        opp_periphs = {}
-        for opp_id in self.opponents.keys():
-            opp_periphs[opp_id] = self.board.fast_flood_fill(opp_id, risk_averse=False, confine_to="auto")
+        # For efficiency, store all opponent data in a lookup dictionary
+        opp_data = {}
+        for opp_id, opp_snake in self.opponents.items():
+            opp_data[opp_id, "periph"] = self.board.fast_flood_fill(opp_id, risk_averse=False, confine_to="auto")
+            opp_data[opp_id, "manh_dist"] = self.you.head.manhattan_dist(opp_snake.head)
+            opp_data[opp_id, "dijk_dist"] = self.board.shortest_dist(self.you.head, opp_snake.head)
+
+        dist_from_enemies = sorted([opp_data[opp_id, "dijk_dist"] for opp_id in self.opponents])
+
+        # Remove snakes who're 100% going to die within a move or 2
+        if len(self.opponents) >= 2:
+            basically_dead = [opp_id for opp_id in self.opponents if (
+                    opp_data[opp_id, "periph"] < 1 and opp_data[opp_id, "manh_dist"] >= 5)]  # TODO tails in vicinity
+            self.board.remove_snakes(basically_dead)
+            for dead_opp_id in basically_dead:
+                # self.all_snakes.pop(dead_opp_id)
+                self.opponents.pop(dead_opp_id)
+                opp_data.pop((dead_opp_id, "periph"))
+                opp_data.pop((dead_opp_id, "manh_dist"))
 
         # Did any opponent snakes die or increase in length? (Higher opponent total => worse for us)
-        leftover_opps = [opp for opp in self.opponents.values() if opp_periphs[opp.id] >= 3]
+        leftover_opps = [opp for opp in self.opponents.values() if opp_data[opp.id, "periph"] >= 3]
         tot_opp_length = sum([opp.length for opp in leftover_opps])
-        tot_opp_length_weight = 25 if len(leftover_opps) == len(self.opponents) else 500
-
-        # Remove other snakes that we're not edge-killing who's def dead
-        if len(self.opponents) >= 2:
-            basically_dead_opps = [opp.id for opp in self.opponents.values() if opp_periphs[opp.id] < 1 and self.you.head.manhattan_dist(opp.head) >= 5]
-            self.board.remove_snakes(basically_dead_opps)
-            for dead_opp in basically_dead_opps:
-                # self.all_snakes.pop(dead_opp)
-                self.opponents.pop(dead_opp)
-
-        next_moves = self.get_moveset(snake_id=self.you.id, risk_averse=True)
-        # How much space do we have?
-        space_ra, space_all, ff_bounds = self.board.fast_flood_fill(self.you.id, full_package=True)
-        space_ra_weight = 1
-
-        # Add tails
-        add_space = [opp.length for opp in self.opponents.values() if opp.tail.manhattan_dist(self.you.head) == 1]
-        space_all += max(add_space) if len(add_space) > 0 else 0
-
-        # How cl
-        dist_from_enemies = sorted(
-            [self.board.shortest_dist(self.you.head, opp.head) for opp in self.opponents.values()])
+        tot_opp_length_weight = 25 if len(leftover_opps) == len(self.opponents) else 500  # How does this matter
 
         # Determine the closest safe distance to food
         dist_food, best_food = self.board.closest_food(self.you.id)
@@ -638,7 +565,9 @@ class Battlesnake:
                 food_weight = 10
                 incr_length_weight = 10
             elif dist_food < min(dist_from_enemies):  # Might as well get food if convenient
-                food_weight = 100
+                food_weight = 150
+            elif dist_food <= 5:
+                food_weight = 125
             else:  # Food isn't that important at the moment
                 food_weight = 25
         elif dist_food <= 3:  # Guarantee eating food the closer we are to it
@@ -646,11 +575,21 @@ class Battlesnake:
         else:
             food_weight = 50
 
+        ### SPACE ###
+
+        # How much space do we have?
+        space_ra, space_all, ff_bounds = self.board.fast_flood_fill(self.you.id, full_package=True)
+        space_ra_weight = 1
+        # If we're adjacent to a tail, add the space gained if we were to follow it
+        add_space = [opp.length for opp in self.opponents.values() if opp.tail.manhattan_dist(self.you.head) == 1]
+        space_all += max(add_space) if len(add_space) > 0 else 0
+
         # How much space do we have in our peripheral?
         periph_ra, periph_all, _ = self.board.fast_flood_fill(self.you.id, confine_to="auto", full_package=True)
         periph_all_weight = 2
 
         # Size of our peripheral
+        next_moves = self.get_moveset(snake_id=self.you.id, risk_averse=True)
         periph_penalty = 0
         necessary_moves = self.you.head.direction_to(Pos({"x": self.board.width // 2, "y": self.board.height // 2}))
         xs, ys, _ = self.you.peripheral_vision("auto", dist=3, width=self.board.width, height=self.board.height)
@@ -658,10 +597,6 @@ class Battlesnake:
                 sum([n in necessary_moves for n in next_moves]) == 0):
             if xs[1] - xs[0] <= self.board.width // 3 or ys[1] - ys[0] <= self.board.height // 3:
                 periph_penalty = -100
-
-        # Can we touch any tails? TODO
-        if space_all <= 15:
-            pass
 
         # How cramped on space are we?
         space_penalty = 0
@@ -686,25 +621,20 @@ class Battlesnake:
         edge_killed = self.edge_kill_detection(self.you.id)
         space_penalty = -1e6 if edge_killed else space_penalty
 
+        ### AGGRESSION ###
+
         # We want to minimise available space for our opponents via flood fill (but only when there are fewer snakes in
         # our vicinity)
-        dist_from_enemies = sorted(
-            [self.board.shortest_dist(self.you.head, opp.head) for opp in self.opponents.values()])
         djikstra_flag = sum([dist <= 3 for dist in dist_from_enemies]) >= 1
         dist_from_enemies_manhattan = sorted(
-            [self.you.head.manhattan_dist(opp.head) for opp in self.opponents.values()])
+            [opp_data[opp.id, "manh_dist"] for opp in self.opponents.values()])
         manhattan_flag = sum([dist <= 5 for dist in dist_from_enemies_manhattan]) >= 1
         if len(self.opponents) <= 3 or djikstra_flag or manhattan_flag:
             self.peripheral_size = 4
             if djikstra_flag:
-                closest_enemy = sorted(self.opponents.keys(), key=lambda opp_id: self.board.shortest_dist(self.you.head,
-                                                                                                         self.opponents[
-                                                                                                             opp_id].head))[
-                    0]
+                closest_enemy = sorted(self.opponents.keys(), key=lambda opp_id: opp_data[opp_id, "dijk_dist"])[0]
             else:
-                closest_enemy = sorted(self.opponents.keys(), key=lambda opp_id: self.you.head.manhattan_dist(self.opponents[
-                                                                                                             opp_id].head))[
-                    0]
+                closest_enemy = sorted(self.opponents.keys(), key=lambda opp_id: opp_data[opp_id, "manh_dist"])[0]
 
             if len(move := self.get_moveset(self.all_snakes[closest_enemy].id)) == 1:
                 confine_to = move[0]
@@ -712,12 +642,10 @@ class Battlesnake:
                 confine_to = "auto"
 
             available_enemy_space_ra, available_enemy_space_all, _ = self.board.fast_flood_fill(closest_enemy, full_package=True)
-            # assert available_enemy_space_ra == available_enemy_space_ra2, f"{available_enemy_space_ra}, {available_enemy_space_ra2}"
-
             available_enemy_space = self.board.fast_flood_fill(closest_enemy, risk_averse=True, confine_to=confine_to)
 
             if space_ra < 5:
-                override = self.you.head.manhattan_dist(self.all_snakes[closest_enemy].head) <= 2
+                override = opp_data[closest_enemy, "manh_dist"] <= 2
             else:
                 override = True
             aggression_okay = (self.you.length >= 6 and override) or (self.you.length < 6 and
@@ -768,14 +696,26 @@ class Battlesnake:
             dist_to_enemy = dist_from_enemies[0]
         else:
             dist_to_enemy = 0
-        if dist_to_enemy > 0 and len(self.opponents) == 1:
+
+        me = self.get_moveset(snake_id=self.you.id)
+        closest_opp = sorted(self.opponents.values(),
+                             key=lambda opp: self.board.shortest_dist(self.you.head, opp.head, efficient=False))[0]
+        them = self.get_moveset(snake_id=closest_opp.id)
+        connection = closest_opp.head.direction_to(self.you.head)
+
+        if sum([esc not in them for esc in connection]) == 0 and dist_to_enemy > 0:  # TODO code flood fill for the esc direction in case they're trapping us
             aggression_weight = 1500
-        elif dist_to_enemy <= 5:
-            aggression_weight = 500
-        elif dist_to_enemy > 0:
-            aggression_weight = 250
         else:
-            aggression_weight = 0
+            if dist_to_enemy > 0 and len(self.opponents) == 1:
+                aggression_weight = 1000
+            elif 0 < dist_to_enemy <= 5:
+                aggression_weight = 500
+            elif dist_to_enemy > 0:
+                aggression_weight = 250
+            else:
+                aggression_weight = 0
+
+
 
         # If we're getting too close to enemy snakes that are longer, RETREAT
         threats = []
@@ -803,11 +743,10 @@ class Battlesnake:
 
 
         collision_inbound = False
-        me = self.get_moveset(snake_id=self.you.id)
-        closest_opp = sorted(self.opponents.values(),
-                             key=lambda opp: self.board.shortest_dist(self.you.head, opp.head, efficient=False))[0]
 
-        them = self.get_moveset(snake_id=closest_opp.id)
+
+
+
         diff_lengths = closest_opp.length - self.you.length
         if diff_lengths > 0:
             connection = closest_opp.head.direction_to(self.you.head)
@@ -835,9 +774,6 @@ class Battlesnake:
             if our_dist <= 5:
                 food_weight /= 10
                 incr_length_weight /= 10
-
-
-
 
         # Can we cut off our opponents?
         # TODO corner edge case
@@ -894,6 +830,8 @@ class Battlesnake:
                     if space_penalty == 0:
                         if self.board.shortest_dist(self.you.head, self.you.tail, efficient=True) > opp_cutoff / 2:
                             space_penalty = -500
+                            if opp_cutoff < 5:
+                                space_penalty = -5000
             else:
                 if opp_cutoff <= 15 and us_cutoff > opp_cutoff:  # Penalise if we're in a worse position
                     if space_penalty == 0:
