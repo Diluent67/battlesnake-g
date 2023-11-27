@@ -5,6 +5,9 @@ import networkx as nx
 import numpy as np
 import sys
 import time
+
+import pandas as pd
+
 from networkx_tree import hierarchy_pos
 from typing import Any, Optional
 from Board import Board
@@ -516,30 +519,26 @@ class Battlesnake:
         incr_length = self.you.length - self.og_length
         incr_length_weight = 1250
 
-        # For efficiency, store all opponent data in a lookup dictionary
-        opp_data = {}
+        # For efficiency, store all opponent metrics in a lookup DataFrame
+        opp_intel = []
         for opp_id, opp_snake in self.opponents.items():
-            opp_data[opp_id, "periph"] = self.board.fast_flood_fill(opp_id, risk_averse=False, confine_to="auto")
-            opp_data[opp_id, "manh_dist"] = self.you.head.manhattan_dist(opp_snake.head)
-            opp_data[opp_id, "dijk_dist"] = self.board.shortest_dist(self.you.head, opp_snake.head)
-
-        dist_from_enemies = sorted([opp_data[opp_id, "dijk_dist"] for opp_id in self.opponents])
+            opp_periph = self.board.fast_flood_fill(opp_id, risk_averse=False, confine_to="auto")
+            opp_manh_dist = self.you.head.manhattan_dist(opp_snake.head)
+            opp_dijk_dist = self.board.shortest_dist(self.you.head, opp_snake.head, efficient=False)
+            opp_intel.append([opp_id, opp_periph, opp_manh_dist, opp_dijk_dist])
+        opp_intel = pd.DataFrame(opp_intel, columns=["id", "periph", "manh_dist", "dijk_dist"]).set_index("id")
 
         # Remove snakes who're 100% going to die within a move or 2
         if len(self.opponents) >= 2:
-            basically_dead = [opp_id for opp_id in self.opponents if (
-                    opp_data[opp_id, "periph"] < 1 and opp_data[opp_id, "manh_dist"] >= 5)]  # TODO tails in vicinity
+            basically_dead = opp_intel[(opp_intel.periph < 1) & (opp_intel.manh_dist >= 5)].index.tolist()
             self.board.remove_snakes(basically_dead)
             for dead_opp_id in basically_dead:
-                # self.all_snakes.pop(dead_opp_id)
                 self.opponents.pop(dead_opp_id)
-                opp_data.pop((dead_opp_id, "periph"))
-                opp_data.pop((dead_opp_id, "manh_dist"))
+                opp_intel.drop(dead_opp_id)
 
         # Did any opponent snakes die or increase in length? (Higher opponent total => worse for us)
-        leftover_opps = [opp for opp in self.opponents.values() if opp_data[opp.id, "periph"] >= 3]
-        tot_opp_length = sum([opp.length for opp in leftover_opps])
-        tot_opp_length_weight = 25 if len(leftover_opps) == len(self.opponents) else 500  # How does this matter
+        tot_opp_length = sum([opp.length for opp in self.opponents.values()])
+        tot_opp_length_weight = 25
 
         # Determine the closest safe distance to food
         dist_food, best_food = self.board.closest_food(self.you.id)
@@ -564,7 +563,7 @@ class Battlesnake:
             elif self.you.length > max(opp_lengths) + 5:
                 food_weight = 10
                 incr_length_weight = 10
-            elif dist_food < min(dist_from_enemies):  # Might as well get food if convenient
+            elif dist_food < opp_intel.dijk_dist.min():  # Might as well get food if convenient
                 food_weight = 150
             elif dist_food <= 5:
                 food_weight = 125
@@ -625,16 +624,17 @@ class Battlesnake:
 
         # We want to minimise available space for our opponents via flood fill (but only when there are fewer snakes in
         # our vicinity)
+        dist_from_enemies = sorted([opp_intel.loc[opp_id, "dijk_dist"] for opp_id in self.opponents])
         djikstra_flag = sum([dist <= 3 for dist in dist_from_enemies]) >= 1
         dist_from_enemies_manhattan = sorted(
-            [opp_data[opp.id, "manh_dist"] for opp in self.opponents.values()])
+            [opp_intel.loc[opp.id, "manh_dist"] for opp in self.opponents.values()])
         manhattan_flag = sum([dist <= 5 for dist in dist_from_enemies_manhattan]) >= 1
         if len(self.opponents) <= 3 or djikstra_flag or manhattan_flag:
             self.peripheral_size = 4
             if djikstra_flag:
-                closest_enemy = sorted(self.opponents.keys(), key=lambda opp_id: opp_data[opp_id, "dijk_dist"])[0]
+                closest_enemy = sorted(self.opponents.keys(), key=lambda opp_id: opp_intel.loc[opp_id, "dijk_dist"])[0]
             else:
-                closest_enemy = sorted(self.opponents.keys(), key=lambda opp_id: opp_data[opp_id, "manh_dist"])[0]
+                closest_enemy = sorted(self.opponents.keys(), key=lambda opp_id: opp_intel.loc[opp_id, "manh_dist"])[0]
 
             if len(move := self.get_moveset(self.all_snakes[closest_enemy].id)) == 1:
                 confine_to = move[0]
@@ -645,7 +645,7 @@ class Battlesnake:
             available_enemy_space = self.board.fast_flood_fill(closest_enemy, risk_averse=True, confine_to=confine_to)
 
             if space_ra < 5:
-                override = opp_data[closest_enemy, "manh_dist"] <= 2
+                override = opp_intel.loc[closest_enemy, "manh_dist"] <= 2
             else:
                 override = True
             aggression_okay = (self.you.length >= 6 and override) or (self.you.length < 6 and
@@ -691,17 +691,21 @@ class Battlesnake:
 
         # Get closer to enemy snakes if we're longer
         if 2 >= len(self.opponents) == sum([self.you.length >= s.length + 1 for s in self.opponents.values()]):
-            dist_from_enemies = sorted(
-                [self.board.shortest_dist(self.you.head, opp.head, efficient=False) for opp in self.opponents.values()])
-            dist_to_enemy = dist_from_enemies[0]
+            dist_to_enemy = opp_intel["dijk_dist"].min()
         else:
             dist_to_enemy = 0
+
+
 
         me = self.get_moveset(snake_id=self.you.id)
         closest_opp = sorted(self.opponents.values(),
                              key=lambda opp: self.board.shortest_dist(self.you.head, opp.head, efficient=False))[0]
         them = self.get_moveset(snake_id=closest_opp.id)
         connection = closest_opp.head.direction_to(self.you.head)
+
+        # We tried tho
+        if opp_intel.loc[closest_opp.id, "manh_dist"] == 2 and self.you.head.manhattan_dist(closest_opp.body[1]) == 1:
+            dist_to_enemy = 5
 
         if sum([esc not in them for esc in connection]) == 0 and dist_to_enemy > 0:  # TODO code flood fill for the esc direction in case they're trapping us
             aggression_weight = 1500
