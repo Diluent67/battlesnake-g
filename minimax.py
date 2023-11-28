@@ -301,7 +301,7 @@ class Battlesnake:
             dist_to_enemy = 0
 
         # Determine the closest safe distance to food
-        dist_food = self.closest_dist_to_food()
+        dist_food = self.dist_to_nearest_food()
 
         # Are we in the centre of the board? Maximise control
         centre = range(self.board_width // 2 - 2, self.board_width // 2 + 3)
@@ -384,7 +384,7 @@ class Battlesnake:
         filled = sum((row == "£").sum() for row in board)
         return filled - 1 if filled > 0 else filled  # Exclude the head, but cannot ever be negative
 
-    def closest_dist_to_food(self):
+    def dist_to_nearest_food(self):
         """Return the Manhattan distance to the nearest food for our snake"""
         best_dist = np.inf
         for food in self.food:
@@ -422,7 +422,7 @@ class Battlesnake:
             new_game.my_health -= 1
 
         # If food was consumed, this elongates the snake from the tail and restores health
-        if new_head in self.food and evaluate_deaths:
+        if new_head in self.food:
             new_game.all_snakes_dict[snake_id]["length"] += 1
             new_game.all_snakes_dict[snake_id]["health"] = 100
             new_game.all_snakes_dict[snake_id]["body"] += [new_game.all_snakes_dict[snake_id]["body"][-1]]
@@ -557,12 +557,11 @@ class Battlesnake:
                     opp_move = ["down"]
 
                 # Save time by only searching for snakes within close range
-                dist_to_opp = self.manhattan_distance(self.my_head, opp_snake["head"])
-                if dist_to_opp < search_within:
-                    opps_moves[opp_id] = opp_move[:2]  # ALL OF THEM
+                if self.manhattan_distance(self.my_head, opp_snake["head"]) < search_within:
+                    opps_moves[opp_id] = opp_move  # ALL OF THEM
                     opps_nearby += 1
                 else:
-                    if len(self.opponents) <= 5 and dist_to_opp < self.board_width // 2:
+                    if len(self.opponents) <= 5:
                         opps_moves[opp_id] = [opp_move[0]]
 
             logging.info(f"Found {opps_nearby} of {len(self.opponents)} OPPONENT SNAKES within {self.board_width // 2} "
@@ -572,7 +571,7 @@ class Battlesnake:
             # If >= 3 board simulations, then randomly sample 3 of them based on how threatening the position is to our
             # snake to cut down on runtime
             all_opp_combos = list(itertools.product(*opps_moves.values()))
-            if len(all_opp_combos) > 2 and len(self.opponents) >= 2:
+            if len(all_opp_combos) > 2 and len(self.opponents) > 2:
                 logging.info(f"FOUND {len(all_opp_combos)} BOARDS BUT CUTTING DOWN TO 2")
                 all_opp_combos = all_opp_combos[:2]
             elif len(all_opp_combos) > 3:
