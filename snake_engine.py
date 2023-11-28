@@ -535,7 +535,7 @@ class Battlesnake:
             self.board.remove_snakes(basically_dead)
             for dead_opp_id in basically_dead:
                 self.opponents.pop(dead_opp_id)
-                opp_intel.drop(dead_opp_id)
+                opp_intel.drop(dead_opp_id, inplace=True)
 
         # Did any opponent snakes die or increase in length? (Higher opponent total => worse for us)
         tot_opp_length = sum([opp.length for opp in self.opponents.values()])
@@ -609,7 +609,7 @@ class Battlesnake:
         elif space_ra <= 3:
             space_penalty = -500
 
-        closest_opp = self.all_snakes[opp_intel[['dijk_dist']].idxmin().tolist()[0]]
+        closest_opp = self.opponents[opp_intel[['dijk_dist']].idxmin().tolist()[0]]
         # diagonal = False
         # if opp_intel.dijk_dist.min() <= 3:
         #     diagonal_x, diagonal_y = self.you.head.x - self.opponents[closest_opp.id].head.x, self.you.head.y - self.opponents[closest_opp.id].head.y
