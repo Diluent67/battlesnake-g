@@ -24,7 +24,7 @@ def info() -> typing.Dict:
         "author": "G",
         "color": "#1F51FF",
         "head": "silly",
-        "tail": "bonhomme",
+        "tail": "curled",
     }
 
 

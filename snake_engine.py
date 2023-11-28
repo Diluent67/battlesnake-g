@@ -599,14 +599,23 @@ class Battlesnake:
 
         # How cramped on space are we?
         space_penalty = 0
-        if space_all <= 3:
+        if space_all < 1 or (space_ra < 1 and len(next_moves) < 1):
+            space_penalty = -1e6
+        elif space_all <= 3:
             space_penalty = -1500
         elif space_ra <= 1:  # Basically trapped
             space_penalty = -1500
         elif space_ra <= 3:
             space_penalty = -500
 
-        # Are we trapped? (With no incoming opponents trapped with us)
+        closest_opp = self.all_snakes[opp_intel[['dijk_dist']].idxmin().tolist()[0]]
+        # diagonal = False
+        # if opp_intel.dijk_dist.min() <= 3:
+        #     diagonal_x, diagonal_y = self.you.head.x - self.opponents[closest_opp.id].head.x, self.you.head.y - self.opponents[closest_opp.id].head.y
+        #     if abs(diagonal_x) == 1 and diagonal_y == 1:
+        #         diagonal = True
+
+        # Are we trapped? (With no incoming opponents trapped with us or cutting us off)
         if space_all <= 15:
             self.trapped, esc_penalty = self.trap_detection(space_all, ff_bounds)
             # Penalise entrapment (-1e7) more than getting killed by an opponent (-1e6)
@@ -617,8 +626,9 @@ class Battlesnake:
             self.trapped = False
 
         # Are we in danger of getting edge-killed?
-        edge_killed = self.edge_kill_detection(self.you.id)
-        space_penalty = -1e6 if edge_killed else space_penalty
+        if not self.trapped:
+            edge_killed = self.edge_kill_detection(self.you.id)
+            space_penalty = -1e6 if edge_killed else space_penalty
 
         ### AGGRESSION ###
 
@@ -692,20 +702,28 @@ class Battlesnake:
         # Get closer to enemy snakes if we're longer
         if 2 >= len(self.opponents) == sum([self.you.length >= s.length + 1 for s in self.opponents.values()]):
             dist_to_enemy = opp_intel["dijk_dist"].min()
+            if 2 in opp_intel[opp_intel.dijk_dist == dist_to_enemy]["manh_dist"].values.tolist():
+                for attempt_id in opp_intel[opp_intel.manh_dist == 2].index.tolist():
+                    if self.you.head.manhattan_dist(self.opponents[attempt_id].body[1]) == 1:
+                        dist_to_enemy = 5
+        elif min(opp_intel.dijk_dist) <= 5 and longest_flag:
+            dist_to_enemy = opp_intel["dijk_dist"].min()
         else:
+            # We tried tho
             dist_to_enemy = 0
+            for attempt_id in opp_intel[opp_intel.manh_dist == 2].index.tolist():
+                if self.you.head.manhattan_dist(self.opponents[attempt_id].body[1]) == 1:
+                    dist_to_enemy = 5
+
 
 
 
         me = self.get_moveset(snake_id=self.you.id)
-        closest_opp = sorted(self.opponents.values(),
-                             key=lambda opp: self.board.shortest_dist(self.you.head, opp.head, efficient=False))[0]
+
         them = self.get_moveset(snake_id=closest_opp.id)
         connection = closest_opp.head.direction_to(self.you.head)
 
-        # We tried tho
-        if opp_intel.loc[closest_opp.id, "manh_dist"] == 2 and self.you.head.manhattan_dist(closest_opp.body[1]) == 1:
-            dist_to_enemy = 5
+
 
         if sum([esc not in them for esc in connection]) == 0 and dist_to_enemy > 0:  # TODO code flood fill for the esc direction in case they're trapping us
             aggression_weight = 1500
@@ -755,7 +773,7 @@ class Battlesnake:
         if diff_lengths > 0:
             connection = closest_opp.head.direction_to(self.you.head)
             # This means they're headed towards us
-            if closest_opp.facing_direction() in connection:
+            if closest_opp.facing_direction() in connection and len(connection) > 1:
                 # If we have no choice but to head towards the opponent as well  (e.g. if the enemy is heading up and left, we have no choice but to move down or right)
                 if sum([esc in me for esc in connection]) == 0:  # TODO code flood fill for the esc direction in case they're trapping us
                     collision_inbound = True
@@ -796,6 +814,13 @@ class Battlesnake:
                     self.you.peripheral_vision(direction=self.you.facing_direction(), return_pos_only=True)) and
                 (on_edge or (not on_edge and self.you.facing_direction() in me)))):  # continue to cutoff, unless we're on the edge for an edge kill?
             cutting_off = self.board.fast_flood_fill(closest_opp.id, opp_cutoff=self.you.id)
+            if our_dist <= 3:
+                cutting_off2 = []
+                for next_move in next_moves:
+                    cutting_off2.append(self.board.fast_flood_fill(closest_opp.id, opp_cutoff=self.you.id, cutoff_prejudice=next_move))
+                if len(cutting_off2) > 0:
+                    cutting_off_new = min(cutting_off2)
+                    cutting_off = min([cutting_off, cutting_off_new])
             if cutting_off <= 15:
                 cutoff_bonus = 2500
             elif cutting_off <= self.board.width * self.board.height / 6:
@@ -825,10 +850,14 @@ class Battlesnake:
                     us_cutoff = self.board.fast_flood_fill(closest_opp.id, opp_cutoff=self.you.id)
                 opp_cutoff = self.board.fast_flood_fill(self.you.id, opp_cutoff=closest_opp.id)
             else:
+
+                # for potential_killer in opp_intel[opp_intel["manh_dist"] == opp_intel["manh_dist"].min()].index.tolist():
+                #     try_this = self.board.fast_flood_fill(self.you.id, opp_cutoff=potential_killer, cutoff_prejudice="all")
                 us_cutoff = self.board.fast_flood_fill(closest_opp.id, opp_cutoff=self.you.id)
-                opp_cutoff = self.board.fast_flood_fill(self.you.id, opp_cutoff=closest_opp.id)  # TODO opps_nearby[0] WTF
+                opp_cutoff = self.board.fast_flood_fill(self.you.id, opp_cutoff=closest_opp.id)
                 if opp_cutoff <= 15 and self.you.head.manhattan_dist(closest_opp.head) >= 5:
                     opp_cutoff = space_ra
+
             if self.you.length < closest_opp.length:
                 if opp_cutoff < 15 and self.you.head.manhattan_dist(closest_opp.head) <= 6:
                     if space_penalty == 0:
