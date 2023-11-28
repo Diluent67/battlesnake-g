@@ -356,11 +356,15 @@ class Battlesnake:
                         threat_two_over = Pos({"x": head_x, "y": head_y + (look * 2)}) if (
                                 0 <= head_y + (look * 2) < self.board.height) else None
                         if look == +1:
-                            side_tunnel_behind = board[head_x - 1, head_y:][::-1][1:] if scan_dir == +1 \
+                            side_tunnel_behind = board[head_x - 1, head_y:][1:] if scan_dir == +1 \
                                 else board[head_x + 1, head_y:][1:]
+                            side_tunnel_side = board[head_x, head_y:][1:] if scan_dir == +1 \
+                                else board[head_x, head_y:][1:]
                         else:
                             side_tunnel_behind = board[head_x - 1, :(head_y + 1)][::-1][1:] if scan_dir == +1 \
                                 else board[head_x + 1, :(head_y + 1)][::-1][1:]
+                            side_tunnel_side = board[head_x, :(head_y + 1)][::-1][1:] if scan_dir == +1 \
+                                else board[head_x, :(head_y + 1)][::-1][1:]
                         if (head_x == 0 and direction == "left") or (
                                 head_x == self.board.width - 1 and direction == "right"):
                             side_tunnel_ahead = None
@@ -370,6 +374,17 @@ class Battlesnake:
 
                         # Situations where we're forced to pick a side and are restrained to a "tunnel"
                         if direction not in possible_moves:
+                            # Is there a tail up ahead?
+                            tail_escape = False
+                            road_block = next((i for i, v in enumerate(side_tunnel_side) if v not in [0, 100]), -1)
+                            if look == +1:
+                                road_block_pos = Pos({"x": head_x, "y": head_y + road_block + 1})
+                            else:
+                                road_block_pos = Pos({"x": head_x, "y": head_y - road_block - 1})
+
+                            if len([opp.id for opp in self.opponents.values() if opp.tail == road_block_pos]) > 0:
+                                tail_escape = True
+
                             danger_flag = [False, False]
                             for strip_num, strip in enumerate([side_tunnel_behind, side_tunnel_ahead]):
                                 if strip is None:
@@ -385,13 +400,16 @@ class Battlesnake:
                                             x_loc = +1 if scan_dir == -1 else -1
                                         else:
                                             x_loc = -1 if scan_dir == -1 else +1
-                                        kill_spot = Pos({"x": head_x + x_loc, "y": head_y + freedom + 1})
+                                        if look == +1:
+                                            kill_spot = Pos({"x": head_x + x_loc, "y": head_y + freedom + 1})
+                                        else:
+                                            kill_spot = Pos({"x": head_x + x_loc, "y": head_y - freedom - 1})
                                         for opp_killer in self.opponents.values():
                                             if opp_killer.head.manhattan_dist(kill_spot) <= freedom:
                                                 danger_flag[strip_num] = True
                                                 # edge_killers[num] = opp_killer
                                                 continue
-                            if sum(danger_flag) == 2:
+                            if sum(danger_flag) == 2 and not tail_escape:
                                 trapped_sides[num] = True
 
 
@@ -841,7 +859,7 @@ class Battlesnake:
 
 
         # Can we get cut off?
-        opps_nearby = [opp for opp in self.opponents.values() if self.you.head.manhattan_dist(opp.head) <= 4]
+        opps_nearby = [opp for opp in self.opponents.values() if self.you.head.manhattan_dist(opp.head) <= 6]
         if 0 < len(opps_nearby) <= 3 or len(self.opponents) == 1:
             # if cutting_off is not None:
             #     us_cutoff = cutting_off
