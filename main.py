@@ -23,7 +23,7 @@ def info() -> typing.Dict:
         "apiversion": "1",
         "author": "G",
         "color": "#1F51FF",
-        "head": "silly",
+        "head": "workout",
         "tail": "curled",
     }
 

@@ -205,7 +205,7 @@ class Battlesnake:
         new_game.board.update_board()
         return new_game
 
-    def trap_detection(self, space_all, ff_bounds) -> tuple[bool, float | None]:
+    def trap_detection(self, space_all, ff_bounds) -> tuple[bool, float | None, float | None]:
         """
         Determine if our snake is trapped based on its possible escape routes
 
@@ -214,7 +214,7 @@ class Battlesnake:
             A heuristic to inform how dangerous our potential escape route would be
         """
         trapped = False
-        esc_penalty = None
+        esc_penalty, opp_trap_penalty = None, None
 
         opp_heads = [opp.head.as_tuple() for opp in self.opponents.values()]
         touch_opps = [Pos({"x": ff_bound[0], "y": ff_bound[1]}) for ff_bound in ff_bounds if ff_bound in opp_heads]
@@ -273,11 +273,12 @@ class Battlesnake:
                 # If we found an opening, consider whether there's an opponent snake waiting for us there
                 if not trapped:
                     snakes_near = [opp for opp in self.opponents.values() if (
-                            opp.head.manhattan_dist(opening) <= shortest_path_to_opening)]
+                            opp.head.manhattan_dist(opening) <= shortest_path_to_opening and self.board.shortest_dist(opp.head, self.you.head, efficient=False) >= 1e6)]
                     # Give more weight to enemy snakes that can kill us
                     threats_near = [opp for opp in snakes_near if opp.length >= self.you.length]
                     # Our escape heuristic penalises longer escape routes and routes with a possible opponent waiting
-                    esc_penalty = -(shortest_path_to_opening + 5 * len(snakes_near) + 10 * len(threats_near))
+                    esc_penalty = -shortest_path_to_opening
+                    opp_trap_penalty = -(5 * len(snakes_near) + 10 * len(threats_near))
             # If there's another trapped snake approaching us, see if we can reach the opening before a collision
             elif self.board.shortest_dist(self.you.head, opening) >= self.board.shortest_dist(
                     self.you.head, Pos({"x": collision_sq[0], "y": collision_sq[1]})):
@@ -285,7 +286,7 @@ class Battlesnake:
         else:
             trapped = True
 
-        return trapped, esc_penalty
+        return trapped, esc_penalty, opp_trap_penalty
 
     def edge_kill_detection(self, snake_id) -> bool:
         """
@@ -616,12 +617,17 @@ class Battlesnake:
         #         diagonal = True
 
         # Are we trapped? (With no incoming opponents trapped with us or cutting us off)
-        if space_all <= 15:
-            self.trapped, esc_penalty = self.trap_detection(space_all, ff_bounds)
-            # Penalise entrapment (-1e7) more than getting killed by an opponent (-1e6)
-            space_penalty = -1e7 if self.trapped and len(self.board.touch_opps) == 0 else space_penalty
-            space_penalty += esc_penalty if not self.trapped and esc_penalty is not None else 0
-            periph_all_weight = 0.5
+        if space_all <= 15 and len(add_space) == 0:
+            self.trapped, esc_penalty, opp_trap_penalty = self.trap_detection(space_all, ff_bounds)
+            if not self.trapped:
+                if opp_trap_penalty < 0:
+                    space_penalty = -1e5 + esc_penalty * 10
+            else:
+                # Penalise entrapment (-1e7) more than getting killed by an opponent (-1e6)
+                space_penalty = -1e7 if self.trapped and len(self.board.touch_opps) == 0 else space_penalty
+                space_penalty += esc_penalty if not self.trapped and esc_penalty is not None else 0
+                periph_all_weight = 0.5
+
         else:
             self.trapped = False
 
