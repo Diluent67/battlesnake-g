@@ -90,7 +90,7 @@ class Board:
 
         for h in self.hazards:
             self.board[h.x, h.y] = 255
-            self.graph.remove_node(h.as_tuple())
+            # self.graph.remove_node(h.as_tuple())
 
         for snake_num, snake in enumerate(self.all_snakes.values()):
             skip_tail = snake.body[-2] == snake.tail
@@ -143,7 +143,7 @@ class Board:
             if add_lengths:
                 if j <= len(self.all_snakes):
                     jth_snake = list(self.all_snakes.values())[j - 1]
-                    display_row += f"\t\t\tSnake {j}: {jth_snake.length}"
+                    display_row += f"\t\t\tSnake {j}: {jth_snake.length} | {jth_snake.health}"
             board_str += display_row + "\n"
         board_str += "\n\t " + "  ".join(map(str, np.arange(0, self.width)))
 
@@ -403,9 +403,9 @@ class Board:
         if pos.y < 0 or pos.y >= self.height:
             return False, True
 
-        # Prevent snake from moving into a hazard
-        if pos in self.hazards:
-            return False, True
+        # # Prevent snake from moving into a hazard
+        # if pos in self.hazards:
+        #     return True, False
 
         # Prevent snake from colliding with other snakes. While traversing the minimax search tree, collision rules will
         # differ depending on whose turn it is since our snake makes moves separately from opponent snakes.

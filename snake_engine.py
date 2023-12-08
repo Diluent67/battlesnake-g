@@ -28,7 +28,8 @@ class Battlesnake:
             og_length: Optional[bool] = None,
             kills_by_depth: Optional[list] = None,
             risky_path: Optional[bool] = False,
-            local: Optional[bool] = False
+            local: Optional[bool] = False,
+            map: Optional[str] = None
     ):
         """
         Represents our Battlesnake game and includes all our decision-making methods
@@ -50,7 +51,7 @@ class Battlesnake:
         # Battlesnake game data
         self.dict = game_state
         # self.game_id = game_state["game"]["id"]
-        # self.map = game_state["game"]["map"]
+        self.map = game_state["game"]["map"] if map is None and "game" in game_state and "map" in game_state["game"] else map
         self.turn = game_state["turn"]
         self.board = Board(game_state)
         self.all_snakes = self.board.all_snakes
@@ -160,6 +161,8 @@ class Battlesnake:
         for snake_id, snake in self.all_snakes.items():
             if snake_id in move_dict:
                 new_snake_dict = snake.make_move(move_dict[snake_id], food_list=self.board.food, return_dict=True)
+                if self.map == "royale" and snake.head.moved_to(move_dict[snake_id]) in self.board.hazards:
+                    new_snake_dict["health"] -= 15
                 all_snakes.append(new_snake_dict)
                 # Repeat for our snake's specific attributes
                 if snake_id == self.you.id:
@@ -180,7 +183,8 @@ class Battlesnake:
             debugging=self.debugging,
             og_length=self.og_length,
             kills_by_depth=self.kills_by_depth.copy(),
-            risky_path=risky_path if not self.risky_path else self.risky_path
+            risky_path=risky_path if not self.risky_path else self.risky_path,
+            map=self.map
         )
 
         # Check if any snakes died as a result of the simulation
