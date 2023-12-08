@@ -204,6 +204,11 @@ class Battlesnake:
                     # Keep track if our snake was the killer
                     if snake_id != self.you.id and snake.head.manhattan_dist(new_game.you.head) <= 2:
                         new_game.kills_by_depth.append(depth)
+
+                # Did the snake die because it ran out of health?
+                if snake.health <= 0:
+                    snake.dead = True
+
                 # Update snake length from any food eaten and remove the food from the board
                 if (consumed_food := snake.food_eaten) is not None:
                     new_game.all_snakes[snake_id].ate_food()
@@ -555,6 +560,9 @@ class Battlesnake:
         # Did we increase in length? (Reward any food eaten)
         incr_length = self.you.length - self.og_length
         incr_length_weight = 1250
+
+        health = self.you.health
+        health_weight = 5 if self.map == "royale" else 0
 
         # For efficiency, store all opponent metrics in a lookup DataFrame
         opp_intel = []
@@ -948,6 +956,7 @@ class Battlesnake:
             (food_weight / (dist_food + 1)) + \
             (current_depth * current_depth_weight) + \
             (incr_length * incr_length_weight) + \
+            health * health_weight + \
             in_centre * centre_control_weight + \
             on_edge * on_edge_penalty + \
             aggression_weight / (dist_to_enemy + 1) + cutoff_bonus + \

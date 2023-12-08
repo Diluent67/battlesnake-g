@@ -88,9 +88,9 @@ class Board:
         for f in self.food:
             self.board[f.x, f.y] = 100
 
-        for h in self.hazards:
-            self.board[h.x, h.y] = 255
-            # self.graph.remove_node(h.as_tuple())
+        # for h in self.hazards:
+        #     self.board[h.x, h.y] = 255
+        #     self.graph.remove_node(h.as_tuple())
 
         for snake_num, snake in enumerate(self.all_snakes.values()):
             skip_tail = snake.body[-2] == snake.tail
